@@ -1,0 +1,26 @@
+{
+  "name": "tracker-dashboard",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node --experimental-sqlite dist/index.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.2",
+    "cheerio": "^1.0.0",
+    "express": "^4.19.2",
+    "https-proxy-agent": "^9.0.0",
+    "playwright": "^1.60.0",
+    "socks-proxy-agent": "^10.0.0",
+    "top-user-agents": "^2.1.111",
+    "tough-cookie": "^6.0.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.2",
+    "tsx": "^4.15.6",
+    "typescript": "^5.4.5"
+  }
+}

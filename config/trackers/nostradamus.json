@@ -1,0 +1,33 @@
+{
+  "id": "nostradamus",
+  "name": "Nostradamus",
+  "baseUrl": "https://nostradamus.foo",
+  "enabled": true,
+  "login": {
+    "url": "sign-in",
+    "method": "POST",
+    "contentType": "form",
+    "body": {
+      "password": "{{password}}"
+    },
+    "failurePatterns": [
+      "type=\"password\"",
+      "private-key-input",
+      "name=\"password\"",
+      "name=\"username\"",
+      "Se connecter"
+    ]
+  },
+  "fetch": {
+    "url": "activity",
+    "mode": "browser",
+    "responseType": "html",
+    "fields": {
+      "uploadedBytes":   { "regex": "(?:desktop|mobile)-sidebar-uploaded-total[\\s\\S]*?sidebar-account-transfer__value[^>]*>\\s*(?<value>[\\d\\s.,]+\\s*[KMGTPE]?i?B)",   "transform": "bytes"  },
+      "downloadedBytes": { "regex": "(?:desktop|mobile)-sidebar-downloaded-total[\\s\\S]*?sidebar-account-transfer__value[^>]*>\\s*(?<value>[\\d\\s.,]+\\s*[KMGTPE]?i?B)", "transform": "bytes"  },
+      "ratio":           { "regex": "(?:desktop|mobile)-sidebar-ratio-total[\\s\\S]*?sidebar-account-ratio__value[^>]*>\\s*(?<value>[\\d\\s.,]+)",                         "transform": "number" },
+      "seeding":         { "regex": "Torrents\\s+actifs\\s*\\((?<value>\\d+)\\)",                                                                        "transform": "integer" }
+    }
+  },
+  "dashboard": { "byteUnit": "binary" }
+}

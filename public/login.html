@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tracker Dashboard - Login</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --border: #2a2d3a;
+      --text: #e2e4ed;
+      --muted: #6b7280;
+      --blue: #3b82f6;
+      --red: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", system-ui, sans-serif;
+      padding: 24px;
+      flex-direction: column;
+      gap: 18px;
+    }
+    form {
+      width: min(380px, 100%);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px;
+    }
+    .login-logo {
+      display: block;
+      max-width: 280px;
+      max-height: 140px;
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      margin: 0 auto 18px;
+    }
+    h1 { font-size: 18px; margin-bottom: 6px; }
+    p { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+    label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+    input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-size: 14px;
+      margin-bottom: 14px;
+    }
+    input:focus { outline: none; border-color: var(--blue); }
+    button {
+      width: 100%;
+      background: var(--blue);
+      color: #fff;
+      border: 0;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    #error { color: var(--red); min-height: 18px; margin-top: 12px; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <form onsubmit="submitAuth(event)">
+    <img class="login-logo" src="/logo.png" alt="Tracker Dashboard" />
+    <h1 id="title">Tracker Dashboard</h1>
+    <p id="subtitle">Connexion requise</p>
+    <label for="username">Utilisateur</label>
+    <input id="username" autocomplete="username" required />
+    <label for="password">Mot de passe</label>
+    <input id="password" type="password" autocomplete="current-password" required />
+    <button id="submit" type="submit">Se connecter</button>
+    <div id="error"></div>
+  </form>
+
+
+  <script>
+    let setupMode = false;
+
+    async function init() {
+      const r = await fetch('/api/auth/status');
+      const status = await r.json();
+      if (status.authenticated) location.href = '/';
+      setupMode = !status.configured;
+      if (setupMode) {
+        document.getElementById('title').textContent = 'Créer le compte admin';
+        document.getElementById('subtitle').textContent = 'Premier lancement du dashboard';
+        document.getElementById('submit').textContent = 'Créer et entrer';
+        document.getElementById('password').autocomplete = 'new-password';
+      }
+    }
+
+    async function submitAuth(event) {
+      event.preventDefault();
+      const error = document.getElementById('error');
+      error.textContent = '';
+      const endpoint = setupMode ? '/api/auth/setup' : '/api/auth/login';
+      const r = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: document.getElementById('username').value.trim(),
+          password: document.getElementById('password').value,
+        }),
+      });
+      const data = await r.json();
+      if (data.ok) {
+        location.href = '/';
+      } else {
+        error.textContent = data.error || 'Erreur';
+      }
+    }
+
+    init().catch(() => {
+      document.getElementById('error').textContent = 'Service indisponible';
+    });
+  </script>
+</body>
+</html>

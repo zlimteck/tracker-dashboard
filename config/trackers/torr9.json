@@ -1,0 +1,34 @@
+{
+  "id": "torr9",
+  "name": "Torr9",
+  "baseUrl": "https://torr9.net",
+  "enabled": true,
+  "login": {
+    "url": "login?redirect=%2Fstats",
+    "method": "POST",
+    "contentType": "form",
+    "body": {
+      "username": "{{username}}",
+      "email": "{{username}}",
+      "password": "{{password}}"
+    },
+    "failurePatterns": [
+      "type=\"password\"",
+      "name=\"password\"",
+      "Bon Retour",
+      "Nom d'utilisateur ou adresse mail"
+    ]
+  },
+  "fetch": {
+    "url": "stats",
+    "mode": "browser",
+    "responseType": "html",
+    "fields": {
+      "ratio":           { "regex": "Ratio[\\s\\S]{0,320}?>\\s*(?<value>\\d[\\d\\s.,]*)\\s*<",                              "transform": "number" },
+      "uploadedBytes":   { "regex": "Upload total[\\s\\S]{0,420}?>\\s*(?<value>\\d[\\d\\s.,]*\\s*(?:[KMGTPE](?:i?B|io|o)))\\s*<",   "transform": "bytes" },
+      "downloadedBytes": { "regex": "Download total[\\s\\S]{0,420}?>\\s*(?<value>\\d[\\d\\s.,]*\\s*(?:[KMGTPE](?:i?B|io|o)))\\s*<", "transform": "bytes" },
+      "seedBonus":       { "regex": "Score\\s*(?<value>[\\d\\s.,]+)",                                                   "transform": "string" }
+    }
+  },
+  "dashboard": { "byteUnit": "decimal" }
+}

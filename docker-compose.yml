@@ -1,0 +1,9 @@
+services:
+  tracker-dashboard:
+    image: ghcr.io/aerya/trackers-dashboard:latest
+    container_name: trackers-dashboard
+    restart: always
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./config:/app/config

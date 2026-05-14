@@ -1,0 +1,29 @@
+{
+  "id": "hdonly",
+  "name": "HD-Only",
+  "baseUrl": "https://hd-only.org",
+  "enabled": true,
+  "login": {
+    "url": "login.php",
+    "method": "POST",
+    "contentType": "form",
+    "body": {
+      "username":   "{{username}}",
+      "password":   "{{password}}",
+      "keeplogged": "1"
+    },
+    "failurePatterns": [
+      "Identifiant ou mot de passe incorrect",
+      "type=\"password\""
+    ]
+  },
+  "fetch": {
+    "url": "index.php",
+    "responseType": "html",
+    "fields": {
+      "uploadedBytes":   { "regex": "Envoy[ée]\\s*:\\s*(?<value>[\\d\\.,]+\\s*[KMGTPE]?i?B)", "transform": "bytes" },
+      "downloadedBytes": { "regex": "Re[çc]u\\s*:\\s*(?<value>[\\d\\.,]+\\s*[KMGTPE]?i?B)",   "transform": "bytes" }
+    }
+  },
+  "dashboard": { "byteUnit": "decimal" }
+}

@@ -1,0 +1,1103 @@
+import express from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import axios from 'axios';
+import { fetchTracker, invalidateAllSessions, invalidateSession } from './fetcher.js';
+import { type FieldExtractor, type TrackerConfig, type TrackerStats } from './types.js';
+import {
+  loadProxySettings, saveProxySettings, buildProxyConfig, logProxyStatus,
+  type ProxySettings,
+} from './proxy.js';
+import {
+  ensureTrackerSchedules,
+  deleteTrackerCredentials,
+  getTrackerCredentials,
+  getTrackerSchedule,
+  importLegacyCredentialsIfNeeded,
+  importLegacySettingsIfNeeded,
+  importLegacyTrackersIfNeeded,
+  getJsonSetting,
+  listTrackerCredentialSummaries,
+  listTrackerDefinitionFiles,
+  listTrackerSchedules,
+  loadCredentialsFromDb,
+  loadTrackerConfigsFromDb,
+  loadTrackerDefinitionFile,
+  markTrackerScheduleRun,
+  saveStatSnapshots,
+  saveTrackerCredentials,
+  saveTrackerConfig,
+  saveTrackerSchedule,
+  setJsonSetting,
+} from './db.js';
+import {
+  createSessionCookie,
+  isAuthConfigured,
+  readCookie,
+  saveAuthSettings,
+  verifyLogin,
+  verifySessionCookie,
+} from './auth.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PUBLIC_DIR = path.join(__dirname, '..', 'public');
+const SESSION_COOKIE = 'tracker_dashboard_session';
+const TRACKER_DEFINITIONS_SEEN_KEY = 'trackerDefinitionsSeen';
+const PRESENTATION_MODE_KEY = 'presentationMode';
+
+// ─── Chargement trackers / credentials ───────────────────────────────────────
+
+// ─── State ────────────────────────────────────────────────────────────────────
+
+let cachedStats: TrackerStats[] = [];
+let lastRefresh: string | null  = null;
+let isRefreshing                = false;
+const pendingScheduledRuns = new Set<string>();
+
+const unit3dFields = knownUnit3dFields();
+
+function knownUnit3dFields(): Record<string, FieldExtractor> {
+  return {
+    uploadedBytes: {
+      regex: 'ratio-bar__uploaded[\\s\\S]*?<i[^>]*>[\\s\\S]*?</i>\\s*(?<value>[\\d\\s.,]+\\s*[KMGTPE]?i?B)',
+      transform: 'bytes',
+    },
+    downloadedBytes: {
+      regex: 'ratio-bar__downloaded[\\s\\S]*?<i[^>]*>[\\s\\S]*?</i>\\s*(?<value>[\\d\\s.,]+\\s*[KMGTPE]?i?B)',
+      transform: 'bytes',
+    },
+    ratio: {
+      regex: 'ratio-bar__ratio[\\s\\S]*?<i[^>]*>[\\s\\S]*?</i>\\s*(?<value>[\\d\\s.,]+)',
+      transform: 'number',
+    },
+    seeding: {
+      regex: 'ratio-bar__seeding[\\s\\S]*?<i[^>]*>[\\s\\S]*?</i>\\s*(?<value>\\d+)',
+      transform: 'integer',
+    },
+    leeching: {
+      regex: 'ratio-bar__leeching[\\s\\S]*?<i[^>]*>[\\s\\S]*?</i>\\s*(?<value>\\d+)',
+      transform: 'integer',
+    },
+    seedBonus: {
+      regex: 'ratio-bar__points[\\s\\S]*?<i[^>]*>[\\s\\S]*?</i>\\s*(?<value>[\\d\\s.,\\u202f]+)',
+      transform: 'string',
+    },
+    bufferBytes: {
+      regex: 'ratio-bar__buffer[\\s\\S]*?<i[^>]*>[\\s\\S]*?</i>\\s*(?<value>[\\d\\s.,]+\\s*[KMGTPE]?i?B)',
+      transform: 'bytes',
+    },
+    tokens: {
+      regex: 'ratio-bar__tokens[\\s\\S]*?<i[^>]*>[\\s\\S]*?</i>\\s*(?<value>\\d+)',
+      transform: 'integer',
+    },
+  };
+}
+
+const knownTrackerFields: Record<string, {
+  fetchUrl?: string;
+  mode?: 'http' | 'browser';
+  byteUnit?: 'binary' | 'decimal';
+  fields: Record<string, FieldExtractor>;
+}> = {
+  hdonly: {
+    fetchUrl: 'index.php',
+    byteUnit: 'decimal',
+    fields: {
+      uploadedBytes: {
+        regex: 'Envoy[\\s\\S]{0,160}?(?<value>[\\d\\s.,]+\\s*[KMGTPE]?i?B)',
+        transform: 'bytes',
+      },
+      downloadedBytes: {
+        regex: 'Re[\\s\\S]{0,160}?(?<value>[\\d\\s.,]+\\s*[KMGTPE]?i?B)',
+        transform: 'bytes',
+      },
+    },
+  },
+  hdforever: {
+    fetchUrl: 'index.php',
+    byteUnit: 'decimal',
+    fields: {
+      uploadedBytes: {
+        regex: 'Envoy[ée]\\s*:[\\s\\S]{0,160}?(?<value>[\\d\\s.,]+\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))',
+        transform: 'bytes',
+      },
+      downloadedBytes: {
+        regex: 'Re[çc]u\\s*:[\\s\\S]{0,160}?(?<value>[\\d\\s.,]+\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))',
+        transform: 'bytes',
+      },
+      ratio: {
+        regex: 'Ratio\\s*:[\\s\\S]{0,120}?(?<value>\\d[\\d\\s.,]*)',
+        transform: 'number',
+      },
+      seedBonus: {
+        regex: 'Magasin\\s*:[\\s\\S]{0,120}?(?<value>\\d[\\d\\s.,]*)',
+        transform: 'string',
+      },
+    },
+  },
+  theoldschool: {
+    fetchUrl: '/',
+    byteUnit: 'binary',
+    fields: unit3dFields,
+  },
+  generationfree: {
+    fetchUrl: '/',
+    byteUnit: 'binary',
+    fields: unit3dFields,
+  },
+  teamflix: {
+    fetchUrl: '/',
+    byteUnit: 'binary',
+    fields: unit3dFields,
+  },
+  g3mini: {
+    fetchUrl: '/',
+    byteUnit: 'binary',
+    fields: unit3dFields,
+  },
+  abnormal: {
+    fetchUrl: '/',
+    byteUnit: 'decimal',
+    fields: {
+      uploadedBytes: {
+        regex: 'Up\\s*:[\\s\\S]{0,360}?text-green[\\s\\S]{0,120}?(?<value>[\\d\\s.,]+\\s*(?:[KMGTPE](?:i?B|io|o)|B))',
+        transform: 'bytes',
+      },
+      downloadedBytes: {
+        regex: 'Down\\s*:[\\s\\S]{0,360}?text-green[\\s\\S]{0,120}?(?<value>[\\d\\s.,]+\\s*(?:[KMGTPE](?:i?B|io|o)|B))',
+        transform: 'bytes',
+      },
+      ratio: {
+        regex: 'Ratio\\s*:[\\s\\S]{0,360}?text-green[\\s\\S]{0,120}?(?<value>[\\d\\s.,]+)',
+        transform: 'number',
+      },
+      seedBonus: {
+        regex: "Choco's\\s*:[\\s\\S]{0,360}?text-green[\\s\\S]{0,120}?(?<value>[\\d\\s.,]+)",
+        transform: 'string',
+      },
+    },
+  },
+  nexum: {
+    fetchUrl: 'activity',
+    mode: 'browser',
+    byteUnit: 'binary',
+    fields: {
+      uploadedBytes: {
+        regex: 'user-stat-up[^>]*>[\\s\\S]*?(?<value>\\d[\\d\\s.,]*\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))\\s*</span>',
+        transform: 'bytes',
+      },
+      downloadedBytes: {
+        regex: 'user-stat-dn[^>]*>[\\s\\S]*?(?<value>\\d[\\d\\s.,]*\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))\\s*</span>',
+        transform: 'bytes',
+      },
+      seedBonus: {
+        regex: 'class=["\']val["\'][\\s\\S]{0,160}?(?<value>\\d[\\d\\s.,]*)[\\s\\S]{0,160}?Points bonus',
+        transform: 'string',
+      },
+      seeding: {
+        regex: 'Seeds\\s*\\((?<value>\\d+)\\)',
+        transform: 'integer',
+      },
+    },
+  },
+  yggreborn: {
+    fetchUrl: 'account/',
+    mode: 'browser',
+    byteUnit: 'decimal',
+    fields: {
+      uploadedBytes: {
+        regex: '(?<value>\\d[\\d\\s.,]*\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))\\s*</div>[\\s\\S]{0,180}?>Upload<',
+        transform: 'bytes',
+      },
+      downloadedBytes: {
+        regex: '(?<value>\\d[\\d\\s.,]*\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))\\s*</div>[\\s\\S]{0,180}?>Download<',
+        transform: 'bytes',
+      },
+    },
+  },
+  tr4ker: {
+    fetchUrl: '/',
+    mode: 'browser',
+    byteUnit: 'decimal',
+    fields: {
+      ratio: {
+        regex: 'RATIO\\s*:?\\s*(?<value>[\\d\\s.,]+)',
+        transform: 'number',
+      },
+      uploadedBytes: {
+        regex: '>UPLOAD<[\\s\\S]{0,180}?_statValue[^>]*>\\s*(?<value>\\d[\\d\\s.,]*\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))\\s*<',
+        transform: 'bytes',
+      },
+      downloadedBytes: {
+        regex: '>DOWNLOAD<[\\s\\S]{0,180}?_statValue[^>]*>\\s*(?<value>\\d[\\d\\s.,]*\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))\\s*<',
+        transform: 'bytes',
+      },
+    },
+  },
+  lacale: {
+    fetchUrl: 'profile',
+    mode: 'browser',
+    byteUnit: 'decimal',
+    fields: {
+      uploadedBytes: {
+        regex: '\\\\?"uploaded\\\\?"\\s*:\\s*(?<value>\\d+)',
+        transform: 'bytes',
+      },
+      downloadedBytes: {
+        regex: '\\\\?"downloaded\\\\?"\\s*:\\s*(?<value>\\d+)',
+        transform: 'bytes',
+      },
+      seedBonus: {
+        regex: '\\\\?"bonusPoints\\\\?"\\s*:\\s*(?<value>\\d+)',
+        transform: 'string',
+      },
+    },
+  },
+  c411: {
+    fetchUrl: 'user/profile',
+    mode: 'browser',
+    byteUnit: 'decimal',
+    fields: {
+      uploadedBytes: {
+        regex: '(?<value>\\d[\\d\\s.,]*\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))[\\s\\S]{0,260}?Envoy',
+        transform: 'bytes',
+      },
+      ratio: {
+        regex: '(?<value>\\d[\\d\\s.,]*)[\\s\\S]{0,160}?Ratio',
+        transform: 'number',
+      },
+      downloadedBytes: {
+        regex: '(?<value>\\d[\\d\\s.,]*\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))[\\s\\S]{0,260}?T(?:élé|ele|[ée]l[ée])charg',
+        transform: 'bytes',
+      },
+    },
+  },
+  torr9: {
+    fetchUrl: 'stats',
+    mode: 'browser',
+    byteUnit: 'decimal',
+    fields: {
+      ratio: {
+        regex: 'Ratio[\\s\\S]{0,320}?>\\s*(?<value>\\d[\\d\\s.,]*)\\s*<',
+        transform: 'number',
+      },
+      uploadedBytes: {
+        regex: 'Upload total[\\s\\S]{0,420}?>\\s*(?<value>\\d[\\d\\s.,]*\\s*(?:[KMGTPE](?:i?B|io|o)))\\s*<',
+        transform: 'bytes',
+      },
+      downloadedBytes: {
+        regex: 'Download total[\\s\\S]{0,420}?>\\s*(?<value>\\d[\\d\\s.,]*\\s*(?:[KMGTPE](?:i?B|io|o)))\\s*<',
+        transform: 'bytes',
+      },
+      seedBonus: {
+        regex: 'Score\\s*(?<value>[\\d\\s.,]+)',
+        transform: 'string',
+      },
+    },
+  },
+  nostradamus: {
+    fetchUrl: 'activity',
+    byteUnit: 'decimal',
+    fields: {
+      uploadedBytes: {
+        regex: '(?:desktop|mobile)-sidebar-uploaded-total[\\s\\S]*?sidebar-account-transfer__value[^>]*>\\s*(?<value>[\\d\\s.,]+\\s*[KMGTPE]?i?B)',
+        transform: 'bytes',
+      },
+      downloadedBytes: {
+        regex: '(?:desktop|mobile)-sidebar-downloaded-total[\\s\\S]*?sidebar-account-transfer__value[^>]*>\\s*(?<value>[\\d\\s.,]+\\s*[KMGTPE]?i?B)',
+        transform: 'bytes',
+      },
+      ratio: {
+        regex: '(?:desktop|mobile)-sidebar-ratio-total[\\s\\S]*?sidebar-account-ratio__value[^>]*>\\s*(?<value>[\\d\\s.,]+)',
+        transform: 'number',
+      },
+      seeding: {
+        regex: 'Torrents\\s+actifs\\s*\\((?<value>\\d+)\\)',
+        transform: 'integer',
+      },
+    },
+  },
+};
+
+function normalizeTrackerConfigs(): TrackerConfig[] {
+  const trackers = loadTrackerConfigsFromDb();
+  for (const tracker of trackers) {
+    let changed = false;
+    const isHdOnlyLikeTracker = ['hdonly', 'hdforever'].includes(tracker.id);
+    const isUnit3dTracker = ['theoldschool', 'generationfree', 'teamflix', 'g3mini'].includes(tracker.id);
+    if (tracker.id === 'hdonly' && tracker.login.failurePatterns.includes('login.php')) {
+      tracker.login.failurePatterns = tracker.login.failurePatterns
+        .filter(pattern => pattern !== 'login.php');
+      changed = true;
+    }
+    if (isHdOnlyLikeTracker) {
+      tracker.login.preStep = {
+        url: 'login.php',
+        extract: {},
+        includeHiddenInputs: true,
+      };
+      tracker.login.failurePatterns = [
+        ...new Set([
+          ...tracker.login.failurePatterns,
+          'type="password"',
+          'href="login.php"',
+          'Entrer</a>',
+        ]),
+      ];
+      changed = true;
+    }
+    if (isUnit3dTracker) {
+      tracker.login.preStep = {
+        ...(tracker.login.preStep ?? { url: 'login', extract: {} }),
+        includeHiddenInputs: true,
+      };
+      tracker.login.body = {
+        _token: '{{_csrf}}',
+        username: '{{username}}',
+        password: '{{password}}',
+        remember: 'on',
+      };
+      tracker.login.failurePatterns = [
+        ...new Set([
+          ...tracker.login.failurePatterns,
+          'auth-form__form',
+          'type="password"',
+          'Se connecter',
+        ]),
+      ];
+      changed = true;
+    }
+    if (tracker.id === 'abnormal') {
+      if (tracker.login.url !== 'Home/Login') {
+        tracker.login.url = 'Home/Login';
+        changed = true;
+      }
+      tracker.login.preStep = {
+        ...(tracker.login.preStep ?? { url: 'Home/Login', extract: {} }),
+        url: 'Home/Login',
+        includeHiddenInputs: true,
+      };
+      tracker.login.failurePatterns = [
+        ...new Set([
+          ...tracker.login.failurePatterns,
+          'id="account"',
+          'type="password"',
+          'Connexion - ABN',
+        ]),
+      ];
+      changed = true;
+    }
+    if (tracker.id === 'nostradamus') {
+      if (tracker.login.url !== 'sign-in') {
+        tracker.login.url = 'sign-in';
+      }
+      tracker.login.body = {
+        password: '{{password}}',
+      };
+      tracker.login.failurePatterns = [
+        'type="password"',
+        'private-key-input',
+        'name="password"',
+        'name="username"',
+        'Se connecter',
+      ];
+      changed = true;
+    }
+    if (tracker.id === 'tr4ker') {
+      tracker.login.failurePatterns = [
+        ...new Set([
+          ...tracker.login.failurePatterns,
+          'href="/login"',
+          'aria-label="Connexion"',
+          'Inscription',
+        ]),
+      ];
+      changed = true;
+    }
+    if (tracker.id === 'torr9') {
+      if (tracker.login.url !== 'login?redirect=%2Fstats') {
+        tracker.login.url = 'login?redirect=%2Fstats';
+      }
+      tracker.login.failurePatterns = [
+        ...new Set([
+          ...tracker.login.failurePatterns,
+          'Bon Retour',
+          'Nom d\'utilisateur ou adresse mail',
+          'type="password"',
+          'name="password"',
+        ]),
+      ];
+      changed = true;
+    }
+    if (tracker.id === 'yggreborn') {
+      if (tracker.login.url !== 'login?next=/account/') {
+        tracker.login.url = 'login?next=/account/';
+      }
+      tracker.login.body = {
+        identifier: '{{username}}',
+        password: '{{password}}',
+      };
+      tracker.login.failurePatterns = [
+        'type="password"',
+        'name="password"',
+        'name="identifier"',
+        'cf-turnstile',
+        'Connexion à ton compte',
+      ];
+      changed = true;
+    }
+    const known = knownTrackerFields[tracker.id];
+    if (known) {
+      if (known.mode && tracker.fetch.mode !== known.mode) {
+        tracker.fetch.mode = known.mode;
+        changed = true;
+      }
+      if (known.fetchUrl && tracker.fetch.url !== known.fetchUrl) {
+        tracker.fetch.url = known.fetchUrl;
+        changed = true;
+      }
+      if (JSON.stringify(tracker.fetch.fields) !== JSON.stringify(known.fields)) {
+        tracker.fetch.fields = known.fields;
+        changed = true;
+      }
+      if (known.byteUnit && tracker.dashboard?.byteUnit !== known.byteUnit) {
+        tracker.dashboard = { ...(tracker.dashboard ?? {}), byteUnit: known.byteUnit };
+        changed = true;
+      }
+    }
+    if (changed) saveTrackerConfig(tracker);
+  }
+  return loadTrackerConfigsFromDb();
+}
+
+function proxyAllowsTrackerConnections(): boolean {
+  const proxy = loadProxySettings();
+  const proxyActive = Boolean(proxy.enabled && proxy.host && proxy.port);
+  return proxyActive || proxy.directConnectAllowed;
+}
+
+function blockedStats(trackers: TrackerConfig[]): TrackerStats[] {
+  const error = 'Connexion bloquee : active un proxy ou coche explicitement la connexion directe sans proxy.';
+  return trackers
+    .filter(t => t.enabled !== false)
+    .map(tracker => ({
+      id:          tracker.id,
+      name:        tracker.name,
+      trackerUrl:  tracker.baseUrl,
+      status:      'error',
+      error,
+      lastUpdated: new Date().toISOString(),
+      byteUnit:    tracker.dashboard?.byteUnit ?? 'binary',
+      fields:      {},
+    }));
+}
+
+function upsertCachedStat(stat: TrackerStats): void {
+  cachedStats = [
+    ...cachedStats.filter(existing => existing.id !== stat.id),
+    stat,
+  ];
+  lastRefresh = new Date().toISOString();
+}
+
+function visibleStats(trackers: TrackerConfig[]): TrackerStats[] {
+  const cached = new Map(cachedStats.map(stat => [stat.id, stat]));
+  return trackers
+    .filter(tracker => tracker.enabled !== false)
+    .map(tracker => cached.get(tracker.id) ?? ({
+      id:          tracker.id,
+      name:        tracker.name,
+      trackerUrl:  tracker.baseUrl,
+      status:      'error',
+      error:       'En attente du premier rafraichissement',
+      lastUpdated: new Date().toISOString(),
+      byteUnit:    tracker.dashboard?.byteUnit ?? 'binary',
+      fields:      {},
+    }));
+}
+
+function logStatResult(stat: TrackerStats): void {
+  if (stat.status === 'ok') {
+    const fields = Object.entries(stat.fields)
+      .filter(([, value]) => value !== '' && value !== undefined && value !== null)
+      .map(([key, value]) => `${key}=${value}`);
+    console.log(`  [${stat.name}] Stats OK${fields.length ? ` (${fields.join(', ')})` : ' (aucune donnee extraite)'}`);
+    return;
+  }
+
+  console.log(`  [${stat.name}] Stats ERREUR - ${stat.error ?? 'Erreur inconnue'}`);
+}
+
+function isPresentationMode(): boolean {
+  return Boolean(getJsonSetting(PRESENTATION_MODE_KEY, { enabled: false }).enabled);
+}
+
+function fakeNumber(seed: number, min: number, max: number): number {
+  const value = Math.sin(seed * 9301 + 49297) * 233280;
+  const normalized = value - Math.floor(value);
+  return min + normalized * (max - min);
+}
+
+function fakeStatsForPresentation(): TrackerStats[] {
+  const now = new Date();
+  return listTrackerDefinitionFiles()
+    .sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }))
+    .map((tracker, index) => {
+      const uploadedBytes = Math.round(fakeNumber(index + 1, 80, 8200) * 1024 ** 3);
+      const ratio = Number(fakeNumber(index + 7, 1.35, 38).toFixed(2));
+      const downloadedBytes = Math.max(1, Math.round(uploadedBytes / ratio));
+      const bufferBytes = uploadedBytes - downloadedBytes;
+      const lastLoginAt = new Date(now.getTime() - fakeNumber(index + 11, 1, 96) * 3600_000).toISOString();
+
+      return {
+        id: tracker.id,
+        name: tracker.name,
+        trackerUrl: tracker.baseUrl,
+        status: 'ok',
+        lastUpdated: now.toISOString(),
+        lastLoginAt,
+        byteUnit: 'binary',
+        fields: {
+          uploadedBytes,
+          downloadedBytes,
+          ratio,
+          bufferBytes,
+          seeding: Math.round(fakeNumber(index + 17, 0, 42)),
+          seedBonus: index % 4 === 1
+            ? ''
+            : Math.round(fakeNumber(index + 23, 250, 185000)).toLocaleString('fr-FR'),
+        },
+      };
+    });
+}
+
+async function refresh(trackers: TrackerConfig[]): Promise<void> {
+  if (isRefreshing) return;
+  isRefreshing = true;
+  console.log(`\n[${new Date().toISOString()}] Refresh...`);
+  try {
+    if (isPresentationMode()) {
+      cachedStats = fakeStatsForPresentation();
+      lastRefresh = new Date().toISOString();
+      console.log('  Mode presentation actif - donnees factices');
+      return;
+    }
+
+    if (!proxyAllowsTrackerConnections()) {
+      cachedStats = blockedStats(trackers);
+      lastRefresh = new Date().toISOString();
+      console.warn('  Connexions trackers bloquees : proxy absent et connexion directe non autorisee');
+      return;
+    }
+
+    const credentials = loadCredentialsFromDb();
+    const enabledTrackers = trackers.filter(t => t.enabled !== false);
+    const results = await Promise.all(enabledTrackers.map(async tracker => {
+      const creds = credentials[tracker.id];
+      if (!creds) {
+        const stat: TrackerStats = {
+          id:          tracker.id,
+          name:        tracker.name,
+          trackerUrl:  tracker.baseUrl,
+          status:      'error',
+          error:       `Credentials manquants pour "${tracker.id}"`,
+          lastUpdated: new Date().toISOString(),
+          byteUnit:    tracker.dashboard?.byteUnit ?? 'binary',
+          fields:      {},
+        };
+        upsertCachedStat(stat);
+        logStatResult(stat);
+        return stat;
+      }
+
+      const stat = await fetchTracker(tracker, creds);
+      upsertCachedStat(stat);
+      logStatResult(stat);
+      return stat;
+    }));
+    cachedStats = results;
+    lastRefresh = new Date().toISOString();
+    saveStatSnapshots(cachedStats);
+    const ok  = cachedStats.filter(s => s.status === 'ok').length;
+    const err = cachedStats.filter(s => s.status === 'error').length;
+    console.log(`  ✅ ${ok} ok  ❌ ${err} erreur(s)`);
+    cachedStats.filter(s => s.status === 'error')
+      .forEach(s => console.log(`  ⚠️  ${s.name}: ${s.error}`));
+  } finally {
+    isRefreshing = false;
+  }
+}
+
+async function refreshOneTracker(
+  tracker: TrackerConfig,
+): Promise<TrackerStats> {
+  if (isPresentationMode()) {
+    const stat = fakeStatsForPresentation().find(item => item.id === tracker.id);
+    if (stat) return stat;
+  }
+
+  if (!proxyAllowsTrackerConnections()) {
+    const stat = blockedStats([tracker])[0];
+    upsertCachedStat(stat);
+    logStatResult(stat);
+    return stat;
+  }
+
+  const creds = loadCredentialsFromDb()[tracker.id];
+  if (!creds) {
+    const stat: TrackerStats = {
+      id:          tracker.id,
+      name:        tracker.name,
+      trackerUrl:  tracker.baseUrl,
+      status:      'error',
+      error:       `Credentials manquants pour "${tracker.id}"`,
+      lastUpdated: new Date().toISOString(),
+      byteUnit:    tracker.dashboard?.byteUnit ?? 'binary',
+      fields:      {},
+    };
+    upsertCachedStat(stat);
+    logStatResult(stat);
+    return stat;
+  }
+
+  const stat = await fetchTracker(tracker, creds);
+  upsertCachedStat(stat);
+  logStatResult(stat);
+  saveStatSnapshots([stat]);
+  return stat;
+}
+
+
+// ─── Serveur ──────────────────────────────────────────────────────────────────
+
+function nextRandomRun(intervalHours: number): string {
+  const next = new Date();
+  next.setHours(0, 0, 0, 0);
+  next.setDate(next.getDate() + Math.max(1, Math.round(intervalHours / 24)));
+  next.setHours(
+    Math.floor(Math.random() * 24),
+    Math.floor(Math.random() * 60),
+    Math.floor(Math.random() * 60),
+    0,
+  );
+  return next.toISOString();
+}
+
+function shuffled<T>(items: T[]): T[] {
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+function randomSpacingMs(): number {
+  return (10 + Math.floor(Math.random() * 81)) * 1000;
+}
+
+async function refreshScheduledTracker(
+  tracker: TrackerConfig,
+): Promise<void> {
+  if (isRefreshing) return;
+  if (!proxyAllowsTrackerConnections()) {
+    console.warn(`  [${tracker.name}] Refresh planifie bloque : proxy absent et connexion directe non autorisee`);
+    return;
+  }
+
+  const creds = loadCredentialsFromDb()[tracker.id];
+  if (!creds) {
+    console.warn(`  [${tracker.name}] Refresh planifie ignore : credentials manquants`);
+    return;
+  }
+
+  const schedule = getTrackerSchedule(tracker.id);
+  const intervalHours = schedule?.intervalHours ?? 24;
+  const stat = await fetchTracker(tracker, creds);
+  upsertCachedStat(stat);
+  logStatResult(stat);
+  saveStatSnapshots([stat]);
+  markTrackerScheduleRun(tracker.id, nextRandomRun(intervalHours));
+}
+
+function startScheduler(): void {
+  setInterval(() => {
+    const trackers = loadTrackerConfigsFromDb();
+    const now = Date.now();
+    const schedules = listTrackerSchedules().filter(schedule => {
+      if (!schedule.enabled || !schedule.nextRunAt) return false;
+      return new Date(schedule.nextRunAt).getTime() <= now;
+    });
+
+    let delay = 0;
+    for (const schedule of shuffled(schedules)) {
+      if (pendingScheduledRuns.has(schedule.trackerId)) continue;
+      const tracker = trackers.find(t => t.id === schedule.trackerId && t.enabled !== false);
+      if (!tracker) continue;
+      pendingScheduledRuns.add(schedule.trackerId);
+      delay += randomSpacingMs();
+      setTimeout(() => {
+        refreshScheduledTracker(tracker)
+          .catch(err => {
+            console.error(`[${tracker.name}] Refresh planifie en erreur :`, err);
+          })
+          .finally(() => {
+            pendingScheduledRuns.delete(schedule.trackerId);
+          });
+      }, delay);
+    }
+  }, 60_000);
+}
+
+export async function start(): Promise<void> {
+  importLegacySettingsIfNeeded();
+  importLegacyCredentialsIfNeeded();
+  importLegacyTrackersIfNeeded();
+  let trackers = normalizeTrackerConfigs();
+  ensureTrackerSchedules(trackers);
+
+  const app = express();
+  app.use(express.json());
+
+  app.get('/login.html', (_req, res) => {
+    res.sendFile(path.join(PUBLIC_DIR, 'login.html'));
+  });
+
+  app.get('/logo.png', (_req, res) => {
+    res.sendFile(path.join(PUBLIC_DIR, 'logo.png'));
+  });
+
+  app.get('/api/auth/status', (req, res) => {
+    res.json({
+      configured: isAuthConfigured(),
+      authenticated: verifySessionCookie(readCookie(req.headers.cookie, SESSION_COOKIE)),
+    });
+  });
+
+  app.post('/api/auth/setup', (req, res) => {
+    if (isAuthConfigured()) return res.status(409).json({ ok: false, error: 'Compte deja configure' });
+    const { username, password } = req.body as { username?: string; password?: string };
+    if (!username || !password || password.length < 8) {
+      return res.status(400).json({ ok: false, error: 'Utilisateur et mot de passe de 8 caracteres minimum requis' });
+    }
+    saveAuthSettings(username, password);
+    const session = createSessionCookie(username);
+    res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${session}; HttpOnly; SameSite=Lax; Path=/; Max-Age=1209600`);
+    res.json({ ok: true });
+  });
+
+  app.post('/api/auth/login', (req, res) => {
+    const { username, password } = req.body as { username?: string; password?: string };
+    if (!username || !password || !verifyLogin(username, password)) {
+      return res.status(401).json({ ok: false, error: 'Identifiants invalides' });
+    }
+    const session = createSessionCookie(username);
+    res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${session}; HttpOnly; SameSite=Lax; Path=/; Max-Age=1209600`);
+    res.json({ ok: true });
+  });
+
+  app.post('/api/auth/logout', (_req, res) => {
+    res.setHeader('Set-Cookie', `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);
+    res.json({ ok: true });
+  });
+
+  app.use((req, res, next) => {
+    if (!isAuthConfigured()) {
+      if (req.path.startsWith('/api/')) {
+        return res.status(401).json({ ok: false, error: 'Compte admin non configure' });
+      }
+      return res.redirect('/login.html');
+    }
+    if (verifySessionCookie(readCookie(req.headers.cookie, SESSION_COOKIE))) return next();
+    if (req.path.startsWith('/api/')) {
+      return res.status(401).json({ ok: false, error: 'Authentification requise' });
+    }
+    return res.redirect('/login.html');
+  });
+
+  app.get('/', (_req, res) => {
+    res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+  });
+  app.use(express.static(PUBLIC_DIR, { index: false }));
+
+  // ── Stats ──────────────────────────────────────────────────────────────────
+  app.get('/api/stats', (_req, res) => {
+    if (isPresentationMode()) {
+      return res.json({
+        stats: fakeStatsForPresentation(),
+        lastRefresh: new Date().toISOString(),
+        isRefreshing: false,
+        presentationMode: true,
+      });
+    }
+    trackers = normalizeTrackerConfigs();
+    res.json({ stats: visibleStats(trackers), lastRefresh, isRefreshing });
+  });
+
+  app.post('/api/refresh', (_req, res) => {
+    trackers = normalizeTrackerConfigs();
+    if (isPresentationMode()) {
+      cachedStats = fakeStatsForPresentation();
+      lastRefresh = new Date().toISOString();
+      return res.json({ ok: true, presentationMode: true });
+    }
+    refresh(trackers);
+    res.json({ ok: true });
+  });
+
+  app.post('/api/refresh/:trackerId', async (req, res) => {
+    trackers = normalizeTrackerConfigs();
+    if (isPresentationMode()) {
+      const stat = fakeStatsForPresentation().find(item => item.id === req.params.trackerId);
+      if (!stat) return res.status(404).json({ ok: false, error: 'Tracker introuvable' });
+      return res.json({ ok: true, stat, presentationMode: true });
+    }
+    const tracker = trackers.find(t => t.id === req.params.trackerId && t.enabled !== false);
+    if (!tracker) return res.status(404).json({ ok: false, error: 'Tracker introuvable' });
+    const stat = await refreshOneTracker(tracker);
+    res.json({ ok: true, stat });
+  });
+
+  app.get('/api/config', (_req, res) => {
+    trackers = normalizeTrackerConfigs();
+    const schedules = new Map(listTrackerSchedules().map(s => [s.trackerId, s]));
+    const safe = trackers.map(({ id, name, baseUrl, enabled, dashboard }) => ({
+      id,
+      name,
+      baseUrl,
+      enabled: enabled !== false,
+      byteUnit: dashboard?.byteUnit ?? 'binary',
+      schedule: schedules.get(id) ?? null,
+    }));
+    res.json({ trackers: safe });
+  });
+
+  app.get('/api/trackers', (_req, res) => {
+    trackers = normalizeTrackerConfigs();
+    res.json({ trackers });
+  });
+
+  app.get('/api/tracker-definitions', (_req, res) => {
+    importLegacyTrackersIfNeeded();
+    trackers = normalizeTrackerConfigs();
+    ensureTrackerSchedules(trackers);
+    const configured = new Map(trackers.map(tracker => [tracker.id, tracker]));
+    const definitions = listTrackerDefinitionFiles()
+      .map(definition => {
+        const configuredTracker = configured.get(definition.id);
+        return {
+          ...definition,
+          enabled: Boolean(configuredTracker && configuredTracker.enabled !== false),
+          configured: Boolean(configuredTracker),
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
+    const seen = getJsonSetting(TRACKER_DEFINITIONS_SEEN_KEY, { ids: [] as string[] });
+    const seenIds = new Set(Array.isArray(seen.ids) ? seen.ids : []);
+    res.json({
+      definitions,
+      newDefinitions: definitions.filter(definition => !definition.configured && !seenIds.has(definition.id)),
+    });
+  });
+
+  app.post('/api/tracker-definitions/seen', (_req, res) => {
+    const ids = listTrackerDefinitionFiles().map(definition => definition.id);
+    setJsonSetting(TRACKER_DEFINITIONS_SEEN_KEY, { ids });
+    res.json({ ok: true });
+  });
+
+  app.post('/api/trackers/:trackerId/enabled', (req, res) => {
+    importLegacyTrackersIfNeeded();
+    trackers = normalizeTrackerConfigs();
+    const tracker = trackers.find(t => t.id === req.params.trackerId)
+      ?? loadTrackerDefinitionFile(req.params.trackerId);
+    if (!tracker) return res.status(404).json({ ok: false, error: 'Tracker introuvable' });
+
+    tracker.enabled = Boolean(req.body.enabled);
+    saveTrackerConfig(tracker);
+    trackers = normalizeTrackerConfigs();
+    ensureTrackerSchedules(trackers);
+    res.json({ ok: true, tracker });
+  });
+
+  app.post('/api/trackers', (req, res) => {
+    try {
+      const config = req.body as TrackerConfig;
+      if (!config.id || !config.name || !config.baseUrl || !config.login || !config.fetch) {
+        return res.status(400).json({ ok: false, error: 'Config tracker incomplete' });
+      }
+      saveTrackerConfig(config);
+      trackers = loadTrackerConfigsFromDb();
+      ensureTrackerSchedules(trackers);
+      res.json({ ok: true, tracker: config });
+    } catch (err: unknown) {
+      res.status(400).json({
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  });
+
+  // ── Proxy settings ─────────────────────────────────────────────────────────
+  app.get('/api/settings/presentation', (_req, res) => {
+    res.json(getJsonSetting(PRESENTATION_MODE_KEY, { enabled: false }));
+  });
+
+  app.post('/api/settings/presentation', (req, res) => {
+    const enabled = Boolean(req.body.enabled);
+    setJsonSetting(PRESENTATION_MODE_KEY, { enabled });
+    if (enabled) {
+      cachedStats = fakeStatsForPresentation();
+      lastRefresh = new Date().toISOString();
+    }
+    res.json({ ok: true, enabled });
+  });
+
+  app.get('/api/schedules', (_req, res) => {
+    res.json({ schedules: listTrackerSchedules() });
+  });
+
+  app.get('/api/credentials', (_req, res) => {
+    trackers = normalizeTrackerConfigs();
+    const credentials = new Map(listTrackerCredentialSummaries().map(c => [c.trackerId, c]));
+    const configured = new Map(trackers.map(tracker => [tracker.id, tracker]));
+    res.json({
+      credentials: listTrackerDefinitionFiles()
+        .map(definition => {
+          const tracker = configured.get(definition.id);
+          return {
+            trackerId: definition.id,
+            trackerName: definition.name,
+            enabled: Boolean(tracker && tracker.enabled !== false),
+            configured: Boolean(tracker),
+            username: credentials.get(definition.id)?.username ?? '',
+            hasPassword: credentials.get(definition.id)?.hasPassword ?? false,
+            updatedAt: credentials.get(definition.id)?.updatedAt ?? null,
+          };
+        })
+        .sort((a, b) => a.trackerName.localeCompare(b.trackerName, 'fr', { sensitivity: 'base' })),
+    });
+  });
+
+  app.post('/api/credentials/:trackerId', (req, res) => {
+    trackers = loadTrackerConfigsFromDb();
+    const tracker = trackers.find(t => t.id === req.params.trackerId)
+      ?? loadTrackerDefinitionFile(req.params.trackerId);
+    if (!tracker) return res.status(404).json({ ok: false, error: 'Tracker introuvable' });
+
+    const { username, password } = req.body as { username?: string; password?: string };
+    const current = getTrackerCredentials(tracker.id);
+    const nextUsername = username ?? current?.username ?? '';
+    const nextPassword = password === '••••••••' ? current?.password : password;
+
+    if (!nextUsername || !nextPassword) {
+      return res.status(400).json({ ok: false, error: 'Utilisateur et mot de passe requis' });
+    }
+
+    tracker.enabled = true;
+    saveTrackerConfig(tracker);
+    saveTrackerCredentials(tracker.id, nextUsername, nextPassword);
+    invalidateSession(tracker.id);
+    res.json({ ok: true });
+  });
+
+  app.delete('/api/credentials/:trackerId', (req, res) => {
+    trackers = normalizeTrackerConfigs();
+    const tracker = trackers.find(t => t.id === req.params.trackerId)
+      ?? loadTrackerDefinitionFile(req.params.trackerId);
+    if (!tracker) return res.status(404).json({ ok: false, error: 'Tracker introuvable' });
+    deleteTrackerCredentials(tracker.id);
+    invalidateSession(tracker.id);
+    res.json({ ok: true });
+  });
+
+  app.post('/api/schedules/:trackerId', (req, res) => {
+    trackers = loadTrackerConfigsFromDb();
+    const tracker = trackers.find(t => t.id === req.params.trackerId);
+    if (!tracker) return res.status(404).json({ ok: false, error: 'Tracker introuvable' });
+
+    const intervalHours = Number(req.body.intervalHours);
+    const allowed = [24, 48, 168, 504];
+    if (!allowed.includes(intervalHours)) {
+      return res.status(400).json({ ok: false, error: 'Intervalle invalide' });
+    }
+
+    const enabled = Boolean(req.body.enabled);
+    saveTrackerSchedule(
+      tracker.id,
+      enabled,
+      intervalHours,
+      enabled ? nextRandomRun(intervalHours) : null,
+    );
+    res.json({ ok: true, schedule: getTrackerSchedule(tracker.id) });
+  });
+
+  app.get('/api/settings/proxy', (_req, res) => {
+    const proxy = loadProxySettings();
+    // Ne jamais renvoyer le mot de passe en clair — juste indiquer s'il est défini
+    res.json({ ...proxy, password: proxy.password ? '••••••••' : '' });
+  });
+
+  app.post('/api/settings/proxy', (req, res) => {
+    try {
+      const {
+        enabled,
+        type,
+        host,
+        port,
+        username,
+        password,
+        directConnectAllowed,
+      } = req.body as ProxySettings;
+      const current = loadProxySettings();
+      const updated: ProxySettings = {
+        enabled: Boolean(enabled),
+        type:     type     ?? current.type,
+        host:     host     ?? current.host,
+        port:     port     ?? current.port,
+        username: username ?? current.username,
+        // Si le client renvoie les bullets, on garde l'ancien password
+        password: password === '••••••••' ? current.password : (password ?? current.password),
+        directConnectAllowed: Boolean(directConnectAllowed),
+      };
+      saveProxySettings(updated);
+      // Invalider toutes les sessions — elles reprendront avec le nouveau proxy
+      invalidateAllSessions();
+      console.log(`[Proxy] Config mise à jour — ${updated.enabled ? `${updated.type}://${updated.host}:${updated.port}` : 'désactivé'}`);
+      res.json({ ok: true });
+    } catch (err: unknown) {
+      const error = err instanceof Error ? err.message : String(err);
+      console.error('[Proxy] Impossible de sauvegarder la config :', error);
+      res.status(500).json({ ok: false, error });
+    }
+  });
+
+  app.post('/api/proxy/test', async (req, res) => {
+    const { type = 'socks5', host, port, username, password } = req.body as ProxySettings;
+    if (!host || !port) return res.status(400).json({ ok: false, error: 'Hôte et port requis' });
+
+    const current = loadProxySettings();
+    const cfg = buildProxyConfig({
+      enabled: true, type, host, port, username,
+      password: password === '••••••••' ? current.password : password,
+      directConnectAllowed: current.directConnectAllowed,
+    });
+
+    try {
+      const r = await axios.get<{ ip: string }>('https://api.ipify.org?format=json', {
+        ...cfg, timeout: 8000,
+      });
+      res.json({ ok: true, ip: r.data.ip });
+    } catch (err: unknown) {
+      res.json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  const port = parseInt(process.env.PORT ?? '3000', 10);
+  logProxyStatus();
+  app.listen(port, () => console.log(`\n🚀  Dashboard → http://localhost:${port}\n`));
+
+  await refresh(trackers);
+
+  startScheduler();
+}

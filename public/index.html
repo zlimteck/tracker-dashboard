@@ -1,0 +1,1296 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tracker Dashboard</title>
+  <style>
+    :root {
+      --bg:       #0f1117;
+      --surface:  #1a1d27;
+      --border:   #2a2d3a;
+      --text:     #e2e4ed;
+      --muted:    #6b7280;
+      --green:    #22c55e;
+      --yellow:   #eab308;
+      --red:      #ef4444;
+      --blue:     #3b82f6;
+      --purple:   #a855f7;
+      --radius:   12px;
+    }
+
+    :root[data-theme="light"] {
+      --bg:       #f4f6fb;
+      --surface:  #ffffff;
+      --border:   #d8dee9;
+      --text:     #172033;
+      --muted:    #64748b;
+      --green:    #15803d;
+      --yellow:   #ca8a04;
+      --red:      #dc2626;
+      --blue:     #2563eb;
+      --purple:   #7c3aed;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 42px;
+      padding: 0 28px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      position: sticky; top: 0; z-index: 10;
+      overflow: visible;
+    }
+    .header-logo {
+      display: block;
+      position: absolute;
+      left: 28px;
+      top: 4px;
+      width: 250px;
+      height: 166px;
+      object-fit: contain;
+      object-position: center;
+      z-index: 11;
+    }
+
+    .header-right { display: flex; align-items: center; gap: 14px; margin-left: auto; }
+
+    #last-updated { font-size: 12px; color: var(--muted); }
+
+    #refresh-btn {
+      background: var(--blue);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 7px 16px;
+      font-size: 13px;
+      cursor: pointer;
+      display: flex; align-items: center; gap: 6px;
+      transition: opacity .15s;
+    }
+    #refresh-btn:hover { opacity: .85; }
+    #refresh-btn:disabled { opacity: .5; cursor: default; }
+    #refresh-btn svg { width: 14px; height: 14px; }
+
+    /* ── Grid ────────────────────────────────────────────────────── */
+    main {
+      padding: 24px 28px;
+      display: grid;
+      justify-items: center;
+      align-content: start;
+      flex: 1;
+    }
+    .settings-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 14px;
+      width: min(100%, 1220px);
+      margin-bottom: 18px;
+    }
+    @media (max-width: 760px) {
+      .settings-layout { grid-template-columns: 1fr; }
+    }
+
+    #grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 320px));
+      justify-content: center;
+      align-content: start;
+      align-items: start;
+      grid-auto-rows: max-content;
+      gap: 18px;
+      width: min(100%, 2010px);
+    }
+
+    /* ── Cards ───────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      transition: border-color .2s;
+      align-self: start;
+    }
+    .card:hover { border-color: var(--blue); }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .card-name { font-weight: 600; font-size: 15px; color: var(--text); text-decoration: none; }
+    .card-name:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
+    .card-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-refresh {
+      min-width: 34px;
+      height: 24px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid color-mix(in srgb, var(--blue) 55%, transparent);
+      background: color-mix(in srgb, var(--blue) 14%, transparent);
+      color: var(--blue);
+      border-radius: 7px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .card-refresh:hover { border-color: var(--blue); color: var(--text); }
+    .card-refresh:disabled { opacity: .5; cursor: default; }
+
+    .badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 9px;
+      border-radius: 99px;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+    }
+    .badge-ok    { background: color-mix(in srgb, var(--green) 16%, transparent); color: var(--green); }
+    .badge-error { background: color-mix(in srgb, var(--red) 16%, transparent); color: var(--red); }
+    .badge-loading { background: color-mix(in srgb, var(--blue) 14%, transparent); color: var(--blue); }
+
+    /* Stats grid */
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1px;
+      background: var(--border);
+      border-top: 1px solid var(--border);
+      margin-top: 8px;
+    }
+    .stat {
+      background: var(--surface);
+      padding: 8px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+    .stat-value { font-size: 18px; font-weight: 700; color: var(--text); }
+    .stat-unit  { font-size: 11px; color: var(--muted); font-weight: 400; }
+
+    .col-good   { color: var(--green);  }
+    .col-warn   { color: var(--yellow); }
+    .col-bad    { color: var(--red);    }
+    .col-bonus  { color: var(--yellow); }
+    .card-schedule {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 12px;
+      border-top: 1px solid var(--border);
+    }
+    .card-schedule-text {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .card-schedule-text strong { color: var(--text); font-size: 12px; }
+    .card-footer {
+      padding: 8px 12px 10px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    /* Error card */
+    .error-body {
+      padding: 16px 18px;
+      font-size: 13px;
+      color: var(--red);
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .error-body svg { flex-shrink: 0; margin-top: 1px; }
+    .btn-inline {
+      background: none;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 7px 12px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .btn-inline:hover { border-color: var(--blue); }
+
+    /* Skeleton loader */
+    @keyframes shimmer {
+      0%   { opacity: .4; }
+      50%  { opacity: .8; }
+      100% { opacity: .4; }
+    }
+    .skeleton {
+      background: var(--border);
+      border-radius: 4px;
+      animation: shimmer 1.4s ease-in-out infinite;
+    }
+    .skel-name  { height: 16px; width: 120px; margin: 14px 18px 10px; }
+    .skel-ratio { height: 6px; margin: 14px 18px; }
+    .skel-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border); margin-top: 1px; }
+    .skel-stat  { background: var(--surface); height: 64px; }
+
+    /* ── Proxy panel ─────────────────────────────────────────────────────────── */
+    #proxy-toggle, #theme-toggle, #presentation-toggle, #logout-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      display: flex; align-items: center; gap: 5px;
+      transition: border-color .15s, color .15s;
+    }
+    #proxy-toggle:hover, #theme-toggle:hover, #presentation-toggle:hover, #logout-btn:hover { border-color: var(--blue); color: var(--text); }
+    #proxy-toggle.active { border-color: var(--blue); color: var(--blue); }
+    #theme-toggle.active { border-color: var(--yellow); color: var(--yellow); }
+    #presentation-toggle.active { border-color: var(--purple); color: var(--purple); }
+    #presentation-toggle { display: none; }
+
+    #proxy-panel {
+      display: none;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 20px 28px;
+    }
+    #proxy-panel.open { display: block; }
+    .proxy-panel-inner {
+      width: min(100%, 1220px);
+      margin: 0 auto;
+    }
+    #proxy-panel h2 { font-size: 13px; font-weight: 600; margin-bottom: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+
+    .proxy-form {
+      display: grid;
+      grid-template-columns: auto 1fr 1fr 1fr 1fr;
+      gap: 10px;
+      align-items: center;
+    }
+    .proxy-form label { font-size: 12px; color: var(--muted); white-space: nowrap; }
+    .proxy-form input, .proxy-form select {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-size: 13px;
+      width: 100%;
+    }
+    .proxy-form input:focus, .proxy-form select:focus {
+      outline: none; border-color: var(--blue);
+    }
+    .settings-block {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+    .settings-block h3 {
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .5px;
+    }
+    .proxy-actions { display: flex; gap: 8px; margin-top: 12px; align-items: center; }
+    .btn-save {
+      background: var(--blue); color: #fff; border: none;
+      border-radius: 8px; padding: 7px 16px; font-size: 13px; cursor: pointer;
+    }
+    .btn-save:hover { opacity: .85; }
+    .btn-test {
+      background: none; color: var(--text); border: 1px solid var(--border);
+      border-radius: 8px; padding: 7px 16px; font-size: 13px; cursor: pointer;
+    }
+    .btn-test:hover { border-color: var(--blue); }
+    #proxy-test-result { font-size: 13px; margin-left: 8px; }
+
+    .toggle-switch {
+      display: flex; align-items: center; gap: 8px; cursor: pointer;
+    }
+    .toggle-switch input { display: none; }
+    .toggle-track {
+      width: 36px; height: 20px; background: var(--border); border-radius: 99px;
+      position: relative; transition: background .2s;
+    }
+    .toggle-switch input:checked + .toggle-track { background: var(--blue); }
+    .toggle-knob {
+      position: absolute; top: 3px; left: 3px;
+      width: 14px; height: 14px; background: #fff; border-radius: 50%;
+      transition: left .2s;
+    }
+    .toggle-switch input:checked ~ .toggle-track .toggle-knob { left: 19px; }
+
+    #schedule-panel { display: none; }
+    #tracker-definitions-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-bottom: 14px;
+      grid-column: 1 / -1;
+      width: 100%;
+      justify-self: center;
+    }
+    #tracker-definitions-panel:not([open]) {
+      height: 38px;
+      max-height: 38px;
+      min-height: 0;
+      overflow: hidden;
+      padding-top: 10px;
+      padding-bottom: 10px;
+    }
+    #tracker-definitions-panel:not([open]) > :not(summary) {
+      display: none !important;
+    }
+    #tracker-definitions-panel summary {
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+    }
+    #tracker-definitions-panel[open] summary {
+      margin-bottom: 12px;
+    }
+    .tracker-input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 12px;
+      min-width: 0;
+    }
+    .tracker-input:focus {
+      outline: none;
+      border-color: var(--blue);
+      box-shadow: 0 0 0 2px #3b82f620;
+    }
+    .credential-status { min-height: 16px; margin-top: 8px; color: var(--muted); font-size: 12px; }
+    .credential-badge {
+      display: inline-flex;
+      align-items: center;
+      min-width: 76px;
+      justify-content: center;
+      border-radius: 99px;
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .credential-ok { color: var(--green); background: color-mix(in srgb, var(--green) 16%, transparent); }
+    .credential-missing { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 16%, transparent); }
+    .definition-notice {
+      border: 1px solid color-mix(in srgb, var(--blue) 30%, transparent);
+      background: color-mix(in srgb, var(--blue) 10%, transparent);
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 10px;
+      font-size: 13px;
+    }
+    .definition-notice strong { color: var(--text); }
+    .definition-list {
+      display: grid;
+      max-height: 432px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .definition-row {
+      display: grid;
+      grid-template-columns: 230px 84px 96px 220px 220px 86px 92px 78px;
+      align-items: center;
+      column-gap: 10px;
+      min-width: 1160px;
+      border-top: 1px solid var(--border);
+      padding: 8px 10px;
+      font-size: 13px;
+    }
+    .definition-row:first-child { border-top: 0; }
+    .definition-info {
+      min-width: 0;
+    }
+    .definition-row strong { display: block; }
+    .definition-row small {
+      color: var(--muted);
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .definition-actions {
+      display: flex;
+      align-items: center;
+      justify-content: stretch;
+    }
+    .definition-actions button { width: 100%; }
+    .definition-badge {
+      color: var(--green);
+      background: color-mix(in srgb, var(--green) 16%, transparent);
+      border-radius: 99px;
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      width: 100%;
+      justify-content: center;
+      text-align: center;
+    }
+    .definition-badge-muted {
+      color: var(--muted);
+      background: color-mix(in srgb, var(--border) 60%, transparent);
+    }
+    .tracker-field {
+      display: grid;
+      grid-template-columns: 70px minmax(0, 1fr);
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .tracker-field label {
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .tracker-credential-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      min-height: 22px;
+    }
+    @media (max-width: 760px) {
+      #tracker-definitions-panel { width: 100%; }
+      .definition-row { min-width: 1160px; }
+    }
+    .schedule-row {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+    }
+    .schedule-row strong { font-size: 13px; }
+    .schedule-row small { display: block; margin-top: 4px; color: var(--muted); }
+    .schedule-controls { display: flex; align-items: center; gap: 8px; }
+    .schedule-controls select {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 12px;
+    }
+    .site-footer {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 18px 28px 24px;
+      color: var(--muted);
+      font-size: 13px;
+      flex-wrap: wrap;
+    }
+    .site-footer img {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 1px solid var(--border);
+    }
+    .site-footer a {
+      color: var(--text);
+      text-decoration: none;
+    }
+    .site-footer a:hover {
+      color: #fff;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <img class="header-logo" src="/logo.png" alt="Tracker Dashboard" />
+  <div class="header-right">
+
+    <button id="proxy-toggle" onclick="toggleProxyPanel()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
+      </svg>
+      Proxy
+    </button>
+    <button id="theme-toggle" onclick="toggleTheme()">Jour</button>
+    <button id="presentation-toggle" onclick="togglePresentationMode()" title="Afficher toutes les cartes avec des données factices">
+      Présentation
+    </button>
+    <button id="logout-btn" onclick="logout()">Logout</button>
+    <span id="last-updated">—</span>
+    <button id="refresh-btn" onclick="refresh()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/>
+      </svg>
+      Rafraîchir les statistiques
+    </button>
+  </div>
+</header>
+
+<div id="proxy-panel">
+  <div class="proxy-panel-inner">
+    <h2>🔀 Proxy</h2>
+    <div class="proxy-form">
+      <label class="toggle-switch" title="Activer le proxy">
+        <input type="checkbox" id="proxy-enabled" onchange="syncProxyToggle()">
+        <div class="toggle-track"><div class="toggle-knob"></div></div>
+      </label>
+      <div>
+        <label style="display:block;margin-bottom:4px;font-size:11px">Type</label>
+        <select id="proxy-type">
+          <option value="socks5">SOCKS5</option>
+          <option value="socks4">SOCKS4</option>
+          <option value="http">HTTP</option>
+          <option value="https">HTTPS</option>
+        </select>
+      </div>
+      <div>
+        <label style="display:block;margin-bottom:4px;font-size:11px">Hôte</label>
+        <input type="text" id="proxy-host" placeholder="127.0.0.1" />
+      </div>
+      <div>
+        <label style="display:block;margin-bottom:4px;font-size:11px">Port</label>
+        <input type="text" id="proxy-port" placeholder="1080" />
+      </div>
+      <div>
+        <label style="display:block;margin-bottom:4px;font-size:11px">Utilisateur <span style="color:var(--muted)">(optionnel)</span></label>
+        <input type="text" id="proxy-username" placeholder="—" />
+      </div>
+    </div>
+    <div class="proxy-form" style="margin-top:8px">
+      <div></div>
+      <div style="grid-column:span 4">
+        <label style="display:block;margin-bottom:4px;font-size:11px">Mot de passe <span style="color:var(--muted)">(optionnel)</span></label>
+        <input type="password" id="proxy-password" placeholder="—" style="max-width:300px" />
+      </div>
+    </div>
+    <div class="proxy-form" style="margin-top:10px">
+      <div></div>
+      <label class="toggle-switch" style="grid-column:span 4" title="Autoriser les connexions aux trackers sans proxy">
+        <input type="checkbox" id="proxy-direct-allowed">
+        <div class="toggle-track"><div class="toggle-knob"></div></div>
+        <span>Autoriser explicitement la connexion directe sans proxy</span>
+      </label>
+    </div>
+    <div class="proxy-actions">
+      <button class="btn-save" onclick="saveSettings()">Enregistrer</button>
+      <button class="btn-test" onclick="testProxy()">Tester</button>
+      <span id="proxy-test-result"></span>
+    </div>
+  </div>
+</div>
+
+<main>
+  <div class="settings-layout">
+    <details id="tracker-definitions-panel">
+      <summary>Trackers</summary>
+      <div id="tracker-definitions-list" class="credential-status"></div>
+      <div class="credential-status" id="credential-result"></div>
+    </details>
+  </div>
+  <div id="schedule-panel"></div>
+  <div id="grid"></div>
+</main>
+
+<footer class="site-footer">
+  <span>Aerya</span>
+  <img src="/avatar.webp" alt="Avatar Aerya" />
+  <a href="https://github.com/Aerya/tracker-dashboard" target="_blank" rel="noreferrer noopener">GitHub</a>
+  <a href="https://upandclear.org" target="_blank" rel="noreferrer noopener">Blog</a>
+  <a href="https://ko-fi.com/upandclear" target="_blank" rel="noreferrer noopener">Ko-fi</a>
+  <span>❤️</span>
+</footer>
+
+<script>
+  // ─── Formatage ─────────────────────────────────────────────────────────────
+
+  function formatBytes(bytes) {
+    if (bytes === undefined || bytes === null || bytes === '') return '-';
+    const b = Number(bytes);
+    if (Number.isNaN(b)) return String(bytes);
+    const sign = b < 0 ? '-' : '';
+    const abs = Math.abs(b);
+    if (abs >= 1024 ** 4) return [sign + (abs / 1024 ** 4).toFixed(2), 'TiB'];
+    if (abs >= 1024 ** 3) return [sign + (abs / 1024 ** 3).toFixed(2), 'GiB'];
+    if (abs >= 1024 ** 2) return [sign + (abs / 1024 ** 2).toFixed(2), 'MiB'];
+    if (abs >= 1024) return [sign + (abs / 1024).toFixed(2), 'KiB'];
+    return [sign + abs.toFixed(0), 'B'];
+  }
+
+  function formatRatio(r) {
+    if (r === Infinity) return '∞';
+    const n = parseFloat(r);
+    if (isNaN(n)) return '-';
+    return n.toFixed(2);
+  }
+
+  function ratioColor(r) {
+    if (r === Infinity) return '#22c55e';
+    const n = parseFloat(r);
+    if (isNaN(n)) return '#6b7280';
+    if (n < 0.5)  return '#ef4444';
+    if (n < 1.0)  return '#eab308';
+    return '#22c55e';
+  }
+
+  function ratioWidth(r) {
+    const n = parseFloat(r);
+    if (isNaN(n)) return '0%';
+    return Math.min(n / 2 * 100, 100) + '%'; // 2.0 = 100%
+  }
+
+  function ratioClass(r) {
+    if (r === Infinity) return 'col-good';
+    const n = parseFloat(r);
+    if (isNaN(n)) return '';
+    if (n > 1.5) return 'col-good';
+    if (n >= 0.8) return 'col-warn';
+    return 'col-bad';
+  }
+
+  function bufferClass(value) {
+    if (!Array.isArray(value)) return '';
+    const n = parseFloat(String(value[0]).replace(',', '.'));
+    if (Number.isNaN(n) || n === 0) return '';
+    return n > 0 ? 'col-good' : 'col-bad';
+  }
+
+  function relativeTime(iso) {
+    if (!iso) return '—';
+    const diff = Math.round((Date.now() - new Date(iso)) / 1000);
+    if (diff < 0) {
+      const ahead = Math.abs(diff);
+      if (ahead < 60) return `dans ${ahead}s`;
+      if (ahead < 3600) return `dans ${Math.floor(ahead / 60)}min`;
+      if (ahead < 86400) return `dans ${Math.floor(ahead / 3600)}h`;
+      return `dans ${Math.floor(ahead / 86400)}j`;
+    }
+    if (diff < 60)  return `il y a ${diff}s`;
+    if (diff < 3600) return `il y a ${Math.floor(diff / 60)}min`;
+    if (diff < 86400) return `il y a ${Math.floor(diff / 3600)}h`;
+    return `il y a ${Math.floor(diff / 86400)}j`;
+  }
+
+  function formatDateTime(iso) {
+    if (!iso) return '-';
+    return new Intl.DateTimeFormat('fr-FR', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    }).format(new Date(iso));
+  }
+
+  // ─── Rendu des cartes ──────────────────────────────────────────────────────
+
+  function statCell(label, value, unit, colorClass) {
+    const [val, u] = Array.isArray(value) ? value : [value, unit ?? ''];
+    return `
+      <div class="stat">
+        <span class="stat-label">${label}</span>
+        <span class="stat-value ${colorClass ?? ''}">${val ?? '-'}<span class="stat-unit">${u}</span></span>
+      </div>`;
+  }
+
+  function hasStatValue(value) {
+    return value !== undefined && value !== null && value !== '';
+  }
+
+  function formatCount(value) {
+    return hasStatValue(value) ? value : '-';
+  }
+
+  function formatBuffer(fields) {
+    if (hasStatValue(fields.bufferBytes)) return formatBytes(fields.bufferBytes);
+    if (!hasStatValue(fields.uploadedBytes) || !hasStatValue(fields.downloadedBytes)) return '-';
+    return formatBytes(Number(fields.uploadedBytes) - Number(fields.downloadedBytes));
+  }
+
+  function computedRatio(fields) {
+    if (hasStatValue(fields.ratio)) return fields.ratio;
+    if (!hasStatValue(fields.uploadedBytes) || !hasStatValue(fields.downloadedBytes)) return null;
+    const downloaded = Number(fields.downloadedBytes);
+    const uploaded = Number(fields.uploadedBytes);
+    if (Number.isNaN(uploaded) || Number.isNaN(downloaded)) return null;
+    if (downloaded === 0) return uploaded > 0 ? Infinity : null;
+    return uploaded / downloaded;
+  }
+
+  function trackerLink(stat) {
+    const configured = trackerConfig.find(t => t.id === stat.id);
+    return stat.trackerUrl || configured?.baseUrl || '';
+  }
+
+  function trackerName(stat) {
+    const href = trackerLink(stat);
+    const name = escapeHtml(stat.name);
+    if (!href) return `<span class="card-name">${name}</span>`;
+    return `<a class="card-name" href="${escapeHtml(href)}" target="_blank" rel="noreferrer noopener">${name}</a>`;
+  }
+
+  function trackerSchedule(stat) {
+    const configured = trackerConfig.find(t => t.id === stat.id);
+    return configured?.schedule || {};
+  }
+
+  function scheduleControls(stat) {
+    const schedule = trackerSchedule(stat);
+    const enabled = Boolean(schedule.enabled);
+    const interval = schedule.intervalHours || 24;
+    const next = schedule.nextRunAt ? `Prochaine ${relativeTime(schedule.nextRunAt)}` : 'Non planifiee';
+    return `
+      <div class="card-schedule">
+        <div class="card-schedule-text">
+          <strong>Connexion automatique</strong>
+          <span>${enabled ? next : 'Desactivee'}</span>
+        </div>
+        <div class="schedule-controls">
+          <label class="toggle-switch" title="Activer la connexion automatique">
+            <input type="checkbox" ${enabled ? 'checked' : ''} onchange="saveSchedule('${escapeHtml(stat.id)}', this.checked)">
+            <div class="toggle-track"><div class="toggle-knob"></div></div>
+          </label>
+          <select id="schedule-${escapeHtml(stat.id)}" onchange="saveSchedule('${escapeHtml(stat.id)}', true)">
+            <option value="24" ${interval === 24 ? 'selected' : ''}>24h</option>
+            <option value="48" ${interval === 48 ? 'selected' : ''}>48h</option>
+            <option value="168" ${interval === 168 ? 'selected' : ''}>7j</option>
+            <option value="504" ${interval === 504 ? 'selected' : ''}>21j</option>
+          </select>
+        </div>
+      </div>`;
+  }
+
+  function lastLoginText(stat) {
+    return formatDateTime(stat.lastLoginAt || stat.lastUpdated);
+  }
+
+  function cardRefreshButton(stat) {
+    return `
+      <button class="card-refresh" data-tracker="${escapeHtml(stat.id)}" onclick="refreshTracker(this.dataset.tracker, this)" title="Rafraichir ce tracker" aria-label="Rafraichir ce tracker">
+        MàJ
+      </button>`;
+  }
+
+  function renderCard(stat) {
+    const f = stat.fields;
+    if (stat.status === 'error') {
+      return `
+        <div class="card">
+          <div class="card-header">
+            ${trackerName(stat)}
+            <div class="card-header-actions">
+              ${cardRefreshButton(stat)}
+              <span class="badge badge-error">Erreur</span>
+            </div>
+          </div>
+          <div class="error-body">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            ${stat.error ?? 'Erreur inconnue'}
+          </div>
+          ${scheduleControls(stat)}
+          <div class="card-footer">Derniere connexion : ${lastLoginText(stat)}</div>
+        </div>`;
+    }
+
+    const ratio = computedRatio(f);
+    const hasRatio = hasStatValue(ratio);
+    const buffer = formatBuffer(f);
+
+    return `
+      <div class="card">
+          <div class="card-header">
+            ${trackerName(stat)}
+          <div class="card-header-actions">
+            ${cardRefreshButton(stat)}
+            <span class="badge badge-ok">OK</span>
+          </div>
+        </div>
+
+        <div class="stats">
+          ${statCell('Download', formatBytes(f.downloadedBytes), '', '')}
+          ${statCell('Upload', formatBytes(f.uploadedBytes), '', '')}
+          ${statCell('Ratio', hasRatio ? formatRatio(ratio) : '-', '', ratioClass(ratio))}
+          ${statCell('Buffer', buffer, '', bufferClass(buffer))}
+          ${statCell('Seeding', formatCount(f.seeding), '', '')}
+          ${statCell('Bonus', formatCount(f.seedBonus), '', '')}
+        </div>
+        ${scheduleControls(stat)}
+        <div class="card-footer">Derniere connexion : ${lastLoginText(stat)}</div>
+      </div>`;
+  }
+
+  function renderSkeleton(n) {
+    return Array.from({ length: n }, () => `
+      <div class="card">
+        <div class="skel-name skeleton"></div>
+        <div class="skel-ratio skeleton" style="margin: 10px 18px; height:6px"></div>
+        <div class="skel-stats">
+          <div class="skel-stat skeleton"></div>
+          <div class="skel-stat skeleton"></div>
+          <div class="skel-stat skeleton"></div>
+          <div class="skel-stat skeleton"></div>
+        </div>
+      </div>`).join('');
+  }
+
+  // ─── Fetch & polling ───────────────────────────────────────────────────────
+
+  let trackerCount = 4; // mise à jour dès que /api/config répond
+  let trackerConfig = [];
+  let presentationMode = false;
+
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+  }
+
+  function renderSchedulePanel(trackers) {
+    const panel = document.getElementById('schedule-panel');
+    panel.innerHTML = '';
+  }
+
+  async function loadCredentialsPanel() {
+    await loadTrackerDefinitionsPanel();
+  }
+
+  async function loadTrackerDefinitionsPanel() {
+    const panel = document.getElementById('tracker-definitions-panel');
+    const list = document.getElementById('tracker-definitions-list');
+    try {
+      const [definitionResponse, credentialResponse] = await Promise.all([
+        fetch('/api/tracker-definitions'),
+        fetch('/api/credentials'),
+      ]);
+      const data = await definitionResponse.json();
+      const credentialData = await credentialResponse.json();
+      const credentials = new Map((credentialData.credentials || []).map(item => [item.trackerId, item]));
+
+      const definitions = data.definitions || [];
+      const newDefinitions = data.newDefinitions || [];
+      if (newDefinitions.length > 0) panel.open = true;
+
+      if (!definitions.length) {
+        list.innerHTML = 'Aucune définition trouvée dans /config/trackers.';
+        return;
+      }
+
+      const notice = newDefinitions.length
+        ? `<div class="definition-notice">
+            <strong>${newDefinitions.length} nouveau(x) tracker(s) détecté(s)</strong>
+            <button class="btn-save" style="float:right;padding:5px 10px" onclick="ackTrackerDefinitions()">Vu</button>
+          </div>`
+        : '';
+
+      list.innerHTML = `
+        ${notice}
+        <div class="definition-list">
+          ${definitions.map(definition => {
+            const isNew = newDefinitions.some(item => item.id === definition.id);
+            const isEnabled = Boolean(definition.enabled);
+            const credential = credentials.get(definition.id) || {};
+            const safeId = escapeHtml(definition.id);
+            return `
+              <div class="definition-row">
+                <div class="definition-info">
+                  <strong>${escapeHtml(definition.name)}</strong>
+                  <small>${escapeHtml(definition.file)} · ${escapeHtml(definition.baseUrl)}</small>
+                </div>
+                ${isNew ? '<span class="definition-badge">Nouveau</span>' : ''}
+                <span class="definition-badge ${isEnabled ? '' : 'definition-badge-muted'}">${isEnabled ? 'Actif' : 'Disponible'}</span>
+                <span class="credential-badge ${credential.hasPassword ? 'credential-ok' : 'credential-missing'}">
+                  ${credential.hasPassword ? 'Configuré' : 'Manquant'}
+                </span>
+                <div class="tracker-field">
+                  <label>Utilisateur</label>
+                  <input class="tracker-input" id="credential-user-${safeId}" value="${escapeHtml(credential.username || '')}" autocomplete="off">
+                </div>
+                <div class="tracker-field">
+                  <label>Mot de passe</label>
+                  <input class="tracker-input" id="credential-pass-${safeId}" type="password" value="${credential.hasPassword ? '••••••••' : ''}" autocomplete="new-password">
+                </div>
+                <div class="definition-actions">
+                  <button class="btn-save" style="padding:6px 8px" onclick="saveTrackerCredential('${safeId}')">Enregistrer</button>
+                </div>
+                <div class="definition-actions">
+                  <button class="btn-test" style="padding:6px 10px" onclick="resetCredential('${safeId}')">Réinitialiser</button>
+                </div>
+                <div class="definition-actions">
+                  <button class="btn-test" style="padding:6px 10px" onclick="setTrackerEnabled('${safeId}', ${isEnabled ? 'false' : 'true'})">${isEnabled ? 'Retirer' : 'Ajouter'}</button>
+                </div>
+              </div>`;
+          }).join('')}
+        </div>`;
+    } catch(e) {
+      list.innerHTML = 'Impossible de lire /config/trackers.';
+      console.warn('Tracker definitions unavailable', e);
+    }
+  }
+
+  async function ackTrackerDefinitions() {
+    await fetch('/api/tracker-definitions/seen', { method: 'POST' });
+    await loadTrackerDefinitionsPanel();
+    await loadConfig();
+  }
+
+  async function setTrackerEnabled(trackerId, enabled) {
+    await fetch(`/api/trackers/${trackerId}/enabled`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    });
+    await loadTrackerDefinitionsPanel();
+    await loadConfig();
+    await loadStats();
+  }
+
+  async function saveTrackerCredential(trackerId) {
+    const status = document.getElementById('credential-result');
+    status.textContent = 'Enregistrement...';
+    try {
+      const r = await fetch(`/api/credentials/${trackerId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: document.getElementById(`credential-user-${trackerId}`).value.trim(),
+          password: document.getElementById(`credential-pass-${trackerId}`).value,
+        }),
+      });
+      const data = await r.json();
+      if (!data.ok) throw new Error(data.error || 'Erreur');
+      status.style.color = 'var(--green)';
+      status.textContent = 'Identifiants enregistrés';
+      await loadTrackerDefinitionsPanel();
+      await loadConfig();
+    } catch(e) {
+      status.style.color = 'var(--red)';
+      status.textContent = e.message;
+    }
+  }
+
+  async function resetCredential(trackerId) {
+    const status = document.getElementById('credential-result');
+    status.textContent = 'Réinitialisation...';
+    const r = await fetch(`/api/credentials/${trackerId}`, { method: 'DELETE' });
+    const data = await r.json();
+    if (data.ok) {
+      status.style.color = 'var(--green)';
+      status.textContent = 'Identifiants réinitialisés';
+      await loadTrackerDefinitionsPanel();
+    } else {
+      status.style.color = 'var(--red)';
+      status.textContent = data.error || 'Erreur';
+    }
+  }
+
+  function applyTheme(theme) {
+    const nextTheme = theme === 'light' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = nextTheme;
+    localStorage.setItem('tracker-dashboard-theme', nextTheme);
+    const btn = document.getElementById('theme-toggle');
+    if (btn) {
+      btn.classList.toggle('active', nextTheme === 'light');
+      btn.textContent = nextTheme === 'light' ? 'Nuit' : 'Jour';
+      btn.title = nextTheme === 'light' ? 'Passer en mode nuit' : 'Passer en mode jour';
+    }
+  }
+
+  function loadTheme() {
+    const saved = localStorage.getItem('tracker-dashboard-theme');
+    const preferred = window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    applyTheme(saved || preferred);
+  }
+
+  function toggleTheme() {
+    applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
+  }
+
+  function renderPresentationToggle() {
+    const btn = document.getElementById('presentation-toggle');
+    btn.classList.toggle('active', presentationMode);
+    btn.textContent = presentationMode ? 'Présentation ON' : 'Présentation';
+  }
+
+  async function loadPresentationMode() {
+    const r = await fetch('/api/settings/presentation');
+    const data = await r.json();
+    presentationMode = Boolean(data.enabled);
+    renderPresentationToggle();
+  }
+
+  async function togglePresentationMode() {
+    presentationMode = !presentationMode;
+    renderPresentationToggle();
+    await fetch('/api/settings/presentation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: presentationMode }),
+    });
+    await loadConfig();
+    await loadStats();
+  }
+
+  async function loadConfig() {
+    try {
+      const r = await fetch('/api/config');
+      const d = await r.json();
+      trackerConfig = d.trackers || [];
+      trackerCount = d.trackers.filter(t => t.enabled).length;
+      renderSchedulePanel(trackerConfig);
+      if (!presentationMode && trackerCount === 0) {
+        document.getElementById('grid').innerHTML = '<div class="error-body">Aucun tracker configuré.</div>';
+      }
+    } catch {}
+  }
+
+  async function loadStats() {
+    const r    = await fetch('/api/stats');
+    const data = await r.json();
+    clearTimeout(window._refreshPoll);
+
+    const grid = document.getElementById('grid');
+    presentationMode = Boolean(data.presentationMode);
+    renderPresentationToggle();
+
+    if (!presentationMode && trackerCount === 0) {
+      grid.innerHTML = '<div class="error-body">Aucun tracker configuré.</div>';
+      return;
+    }
+    if (!data.stats || data.stats.length === 0) {
+      grid.innerHTML = renderSkeleton(trackerCount);
+      if (data.isRefreshing) {
+        window._refreshPoll = setTimeout(loadStats, 2000);
+      }
+      return;
+    }
+
+    const sortedStats = [...data.stats].sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
+    grid.innerHTML = sortedStats.map(renderCard).join('');
+    document.getElementById('last-updated').textContent =
+      data.lastRefresh ? `Mis à jour ${relativeTime(data.lastRefresh)}` : '—';
+
+    // Mise à jour relative toutes les 30s sans re-fetch
+    clearInterval(window._relTimer);
+    window._relTimer = setInterval(() => {
+      document.getElementById('last-updated').textContent =
+        data.lastRefresh ? `Mis à jour ${relativeTime(data.lastRefresh)}` : '—';
+    }, 30_000);
+
+    if (data.isRefreshing) {
+      window._refreshPoll = setTimeout(loadStats, 2000);
+    }
+  }
+
+  async function refresh() {
+    const btn = document.getElementById('refresh-btn');
+    btn.disabled = true;
+    btn.textContent = 'Refresh en cours…';
+    try {
+      await fetch('/api/refresh', { method: 'POST' });
+      // Attend un peu puis recharge
+      await new Promise(r => setTimeout(r, 2000));
+      await loadStats();
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/>
+      </svg> Rafraîchir les statistiques`;
+    }
+  }
+
+  async function refreshTracker(trackerId, btn) {
+    const previous = btn.innerHTML;
+    btn.disabled = true;
+    btn.textContent = '...';
+    try {
+      const r = await fetch(`/api/refresh/${trackerId}`, { method: 'POST' });
+      const data = await r.json();
+      if (!data.ok) throw new Error(data.error || 'Erreur');
+      await loadStats();
+    } catch(e) {
+      btn.textContent = e.message;
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.innerHTML = previous;
+      }, 1800);
+      return;
+    }
+    btn.disabled = false;
+    btn.innerHTML = previous;
+  }
+
+  async function testTracker(trackerId, btn) {
+    await refreshTracker(trackerId, btn);
+  }
+
+
+  // ─── Proxy ─────────────────────────────────────────────────────────────────
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    location.href = '/login.html';
+  }
+
+  function toggleProxyPanel() {
+    const panel = document.getElementById('proxy-panel');
+    const btn   = document.getElementById('proxy-toggle');
+    panel.classList.toggle('open');
+    btn.classList.toggle('active', panel.classList.contains('open'));
+  }
+
+  function syncProxyToggle() {
+    // visuel uniquement — l'état réel est sauvegardé au clic "Enregistrer"
+  }
+
+  async function loadProxySettings() {
+    try {
+      const r = await fetch('/api/settings/proxy');
+      const d = await r.json();
+      document.getElementById('proxy-enabled').checked  = d.enabled;
+      document.getElementById('proxy-type').value       = d.type    || 'socks5';
+      document.getElementById('proxy-host').value       = d.host    || '';
+      document.getElementById('proxy-port').value       = d.port    || '';
+      document.getElementById('proxy-username').value   = d.username|| '';
+      document.getElementById('proxy-password').value   = d.password|| '';
+      document.getElementById('proxy-direct-allowed').checked = Boolean(d.directConnectAllowed);
+      // Refléter l'état dans le header
+      document.getElementById('proxy-toggle').classList.toggle('active', d.enabled);
+    } catch(e) { console.warn('Proxy settings unavailable', e); }
+  }
+
+  async function saveSchedule(trackerId, enabled) {
+    const select = document.getElementById(`schedule-${trackerId}`);
+    const r = await fetch(`/api/schedules/${trackerId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        enabled,
+        intervalHours: Number(select.value),
+      }),
+    });
+    const d = await r.json();
+    if (!d.ok) console.warn(d.error || 'Schedule save failed');
+    await loadConfig();
+    await loadStats();
+  }
+
+  async function saveSettings() {
+    const result = document.getElementById('proxy-test-result');
+    result.textContent = 'Enregistrement...';
+    try {
+      const r = await fetch('/api/settings/proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enabled:  document.getElementById('proxy-enabled').checked,
+          type:     document.getElementById('proxy-type').value,
+          host:     document.getElementById('proxy-host').value.trim(),
+          port:     document.getElementById('proxy-port').value.trim(),
+          username: document.getElementById('proxy-username').value.trim(),
+          password: document.getElementById('proxy-password').value,
+          directConnectAllowed: document.getElementById('proxy-direct-allowed').checked,
+        }),
+      });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || 'Erreur inconnue');
+      result.style.color = 'var(--green)';
+      result.textContent = '✅ Enregistré — les sessions seront renouvelées au prochain refresh';
+      document.getElementById('proxy-toggle').classList.toggle(
+        'active', document.getElementById('proxy-enabled').checked
+      );
+    } catch(e) {
+      result.style.color = 'var(--red)';
+      result.textContent = '❌ Erreur : ' + e.message;
+    }
+  }
+
+  async function testProxy() {
+    const result = document.getElementById('proxy-test-result');
+    result.style.color = 'var(--muted)';
+    result.textContent = 'Test en cours...';
+    try {
+      const r = await fetch('/api/proxy/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type:     document.getElementById('proxy-type').value,
+          host:     document.getElementById('proxy-host').value.trim(),
+          port:     document.getElementById('proxy-port').value.trim(),
+          username: document.getElementById('proxy-username').value.trim(),
+          password: document.getElementById('proxy-password').value,
+        }),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        result.style.color = 'var(--green)';
+        result.textContent = `✅ Connecté — IP sortante : ${d.ip}`;
+      } else {
+        result.style.color = 'var(--red)';
+        result.textContent = `❌ ${d.error}`;
+      }
+    } catch(e) {
+      result.style.color = 'var(--red)';
+      result.textContent = '❌ ' + e.message;
+    }
+  }
+
+  // ─── Init ──────────────────────────────────────────────────────────────────
+
+  async function init() {
+    loadTheme();
+    await loadPresentationMode();
+    await loadProxySettings();
+    await loadTrackerDefinitionsPanel();
+    document.getElementById('grid').innerHTML = renderSkeleton(trackerCount);
+    await loadConfig();
+    document.getElementById('grid').innerHTML = renderSkeleton(trackerCount);
+    await loadStats();
+    // Polling léger toutes les 60s pour mettre à jour l'heure relative
+    setInterval(loadStats, 60_000);
+  }
+
+  init();
+</script>
+</body>
+</html>
