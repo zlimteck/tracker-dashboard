@@ -12,7 +12,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: aerya/trackers-dashboard
+  IMAGE_NAME: aerya/tracker-dashboard
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
