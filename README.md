@@ -2,6 +2,16 @@
   <img src="public/logo.png" alt="Tracker Dashboard" width="260">
 </p>
 
+
+> [!WARNING]
+> Lors d’un rafraîchissement général ou du premier lancement, certains trackers peuvent temporairement afficher une erreur ou prendre du temps à se mettre à jour.
+>
+> Si besoin, lancez une mise à jour individuelle du tracker concerné.
+>
+> Un goulot d’étranglement existe actuellement au niveau du navigateur headless intégré. Ce point sera retravaillé dans une prochaine version (ou pas).
+
+
+
 # Tracker Dashboard
 
 Tracker Dashboard est une WebUI pour suivre les statistiques de trackers BitTorrent : upload, download, ratio, buffer, points bonus, torrents en seed, selon les fonctionnalités du tracker.
@@ -37,8 +47,6 @@ Depuis la WebUI, on peut :
 - lui choisir un intervalle : 24h, 48h, 7 jours ou 21 jours.
 
 Les données persistantes sont stockées dans SQLite, dans le volume `config` monté.
-
-/!\ Lors d'un rafraichissement général, certains trackers peuvent indiquer une erreur et prendre du temps pour se mettre à jour.
 
 
 ## Sécurité proxy
