@@ -10,9 +10,6 @@ updates:
       time: "06:00"
       timezone: "UTC"
     open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "npm"
     commit-message:
       prefix: "deps"
     # Bloquer les major updates (breaking changes)
@@ -38,9 +35,6 @@ updates:
       time: "06:00"
       timezone: "UTC"
     open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "docker"
     commit-message:
       prefix: "docker"
     ignore:
@@ -57,9 +51,6 @@ updates:
       time: "06:00"
       timezone: "UTC"
     open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "ci"
     commit-message:
       prefix: "ci"
     ignore:
