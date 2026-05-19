@@ -131,7 +131,10 @@ async function ensureLoggedIn(
   if (!hasFailurePattern(html, tracker.login.failurePatterns)) return;
 
   const loginUrl = resolveUrl(tracker.baseUrl, tracker.login.url);
-  await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+  // 'commit' = on attend juste les headers HTTP, puis les waits explicites ci-dessous
+  // s'occupent du DOM (plus robuste pour les sites lourds en JS / proxy lent)
+  await page.goto(loginUrl, { waitUntil: 'commit', timeout: 45_000 });
+  await page.waitForLoadState('domcontentloaded', { timeout: 30_000 }).catch(() => {});
   await waitForAnubis(page);
   await waitForLiveView(page);
   await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
@@ -195,7 +198,7 @@ async function ensureLoggedIn(
   } else {
     await page.keyboard.press('Enter');
   }
-  await page.waitForLoadState('domcontentloaded', { timeout: 60_000 }).catch(() => {});
+  await page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
   const leftLogin = await page.waitForURL(url => !isLoginPath(url.pathname), { timeout: 30_000 })
     .then(() => true)
     .catch(() => false);
@@ -226,11 +229,13 @@ export async function fetchWithBrowser(
   }));
 
   try {
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+    await page.goto(url, { waitUntil: 'commit', timeout: 45_000 });
+    await page.waitForLoadState('domcontentloaded', { timeout: 30_000 }).catch(() => {});
     await waitForAnubis(page);
     await waitForLiveView(page);
     await ensureLoggedIn(tracker, credentials, page);
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+    await page.goto(url, { waitUntil: 'commit', timeout: 45_000 });
+    await page.waitForLoadState('domcontentloaded', { timeout: 30_000 }).catch(() => {});
     await waitForAnubis(page);
     await waitForLiveView(page);
     await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});

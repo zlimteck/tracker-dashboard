@@ -285,7 +285,7 @@ function createSession(): Session {
   const jar    = new CookieJar();
   const client = axios.create({
     withCredentials: true,
-    timeout: 20_000,
+    timeout: 45_000,
     maxRedirects: 10,
     validateStatus: () => true, // on gère les erreurs nous-mêmes
     ...getProxyConfig(),
@@ -497,6 +497,9 @@ export async function fetchTracker(
       if (failed) {
         if (!isRetry) {
           console.log(`  [${tracker.name}] Session navigateur expiree, re-login...`);
+          // Reset complet du contexte navigateur (cookies en memoire) avant retry —
+          // pour les sites ou la session persistante est devenue invalide
+          await closeBrowserSession(tracker.id).catch(() => {});
           await new Promise(resolve => setTimeout(resolve, 3000));
           return attempt(true);
         }
