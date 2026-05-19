@@ -97,11 +97,13 @@ const knownTrackerFields: Record<string, {
   fetchUrl?: string;
   mode?: 'http' | 'browser';
   byteUnit?: 'binary' | 'decimal';
+  ratioless?: boolean;
   fields: Record<string, FieldExtractor>;
 }> = {
   hdonly: {
     fetchUrl: 'index.php',
     byteUnit: 'decimal',
+    ratioless: true,
     fields: {
       uploadedBytes: {
         regex: 'Envoy[\\s\\S]{0,160}?(?<value>[\\d\\s.,]+\\s*[KMGTPE]?i?B)',
@@ -297,7 +299,9 @@ const knownTrackerFields: Record<string, {
   },
   nostradamus: {
     fetchUrl: 'activity',
-    byteUnit: 'decimal',
+    mode: 'browser',
+    byteUnit: 'binary',
+    ratioless: true,
     fields: {
       uploadedBytes: {
         regex: '(?:desktop|mobile)-sidebar-uploaded-total[\\s\\S]*?sidebar-account-transfer__value[^>]*>\\s*(?<value>[\\d\\s.,]+\\s*[KMGTPE]?i?B)',
@@ -307,13 +311,13 @@ const knownTrackerFields: Record<string, {
         regex: '(?:desktop|mobile)-sidebar-downloaded-total[\\s\\S]*?sidebar-account-transfer__value[^>]*>\\s*(?<value>[\\d\\s.,]+\\s*[KMGTPE]?i?B)',
         transform: 'bytes',
       },
-      ratio: {
-        regex: '(?:desktop|mobile)-sidebar-ratio-total[\\s\\S]*?sidebar-account-ratio__value[^>]*>\\s*(?<value>[\\d\\s.,]+)',
-        transform: 'number',
-      },
-      seeding: {
-        regex: 'Torrents\\s+actifs\\s*\\((?<value>\\d+)\\)',
+      points: {
+        regex: 'hero-banknotes[\\s\\S]*?sidebar-account-stat__value[^>]*>\\s*(?<value>[\\d\\s.,]+)',
         transform: 'integer',
+      },
+      rate: {
+        regex: 'hero-bolt[\\s\\S]*?sidebar-account-stat__value[^>]*>\\s*(?<value>[\\d\\s.,]+)',
+        transform: 'number',
       },
     },
   },
@@ -464,6 +468,10 @@ function normalizeTrackerConfigs(): TrackerConfig[] {
         tracker.dashboard = { ...(tracker.dashboard ?? {}), byteUnit: known.byteUnit };
         changed = true;
       }
+      if (typeof known.ratioless === 'boolean' && tracker.ratioless !== known.ratioless) {
+        tracker.ratioless = known.ratioless;
+        changed = true;
+      }
     }
     if (changed) saveTrackerConfig(tracker);
   }
@@ -540,6 +548,7 @@ function fakeNumber(seed: number, min: number, max: number): number {
 
 function fakeStatsForPresentation(): TrackerStats[] {
   const now = new Date();
+  const ratiolessIds = new Set(['hdonly', 'nostradamus']);
   return listTrackerDefinitionFiles()
     .sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }))
     .map((tracker, index) => {
@@ -548,6 +557,24 @@ function fakeStatsForPresentation(): TrackerStats[] {
       const downloadedBytes = Math.max(1, Math.round(uploadedBytes / ratio));
       const bufferBytes = uploadedBytes - downloadedBytes;
       const lastLoginAt = new Date(now.getTime() - fakeNumber(index + 11, 1, 96) * 3600_000).toISOString();
+      const isRatioless = ratiolessIds.has(tracker.id);
+
+      const fields: Record<string, string | number> = {
+        uploadedBytes,
+        downloadedBytes,
+        ratio,
+        bufferBytes,
+      };
+
+      if (isRatioless) {
+        fields.points = Math.round(fakeNumber(index + 17, 50, 5200));
+        fields.rate = Number(fakeNumber(index + 23, 0, 320).toFixed(1));
+      } else {
+        fields.seeding = Math.round(fakeNumber(index + 17, 0, 42));
+        fields.seedBonus = index % 4 === 1
+          ? ''
+          : Math.round(fakeNumber(index + 23, 250, 185000)).toLocaleString('fr-FR');
+      }
 
       return {
         id: tracker.id,
@@ -557,16 +584,7 @@ function fakeStatsForPresentation(): TrackerStats[] {
         lastUpdated: now.toISOString(),
         lastLoginAt,
         byteUnit: 'binary',
-        fields: {
-          uploadedBytes,
-          downloadedBytes,
-          ratio,
-          bufferBytes,
-          seeding: Math.round(fakeNumber(index + 17, 0, 42)),
-          seedBonus: index % 4 === 1
-            ? ''
-            : Math.round(fakeNumber(index + 23, 250, 185000)).toLocaleString('fr-FR'),
-        },
+        fields,
       };
     });
 }
@@ -861,12 +879,13 @@ export async function start(): Promise<void> {
   app.get('/api/config', (_req, res) => {
     trackers = normalizeTrackerConfigs();
     const schedules = new Map(listTrackerSchedules().map(s => [s.trackerId, s]));
-    const safe = trackers.map(({ id, name, baseUrl, enabled, dashboard }) => ({
+    const safe = trackers.map(({ id, name, baseUrl, enabled, dashboard, ratioless }) => ({
       id,
       name,
       baseUrl,
       enabled: enabled !== false,
       byteUnit: dashboard?.byteUnit ?? 'binary',
+      ratioless: Boolean(ratioless),
       schedule: schedules.get(id) ?? null,
     }));
     res.json({ trackers: safe });

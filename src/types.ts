@@ -48,6 +48,8 @@ export interface TrackerConfig {
   name: string;
   baseUrl: string;
   enabled?: boolean;
+  /** Tracker sans systeme de ratio (HD-Only, Nostradamus, etc.) */
+  ratioless?: boolean;
   login: LoginConfig;
   fetch: FetchStep;
   dashboard?: {

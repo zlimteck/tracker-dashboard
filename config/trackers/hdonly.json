@@ -3,6 +3,7 @@
   "name": "HD-Only",
   "baseUrl": "https://hd-only.org",
   "enabled": true,
+  "ratioless": true,
   "login": {
     "url": "login.php",
     "method": "POST",

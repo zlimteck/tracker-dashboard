@@ -3,6 +3,7 @@
   "name": "Nostradamus",
   "baseUrl": "https://nostradamus.foo",
   "enabled": true,
+  "ratioless": true,
   "login": {
     "url": "sign-in",
     "method": "POST",
@@ -25,8 +26,8 @@
     "fields": {
       "uploadedBytes":   { "regex": "(?:desktop|mobile)-sidebar-uploaded-total[\\s\\S]*?sidebar-account-transfer__value[^>]*>\\s*(?<value>[\\d\\s.,]+\\s*[KMGTPE]?i?B)",   "transform": "bytes"  },
       "downloadedBytes": { "regex": "(?:desktop|mobile)-sidebar-downloaded-total[\\s\\S]*?sidebar-account-transfer__value[^>]*>\\s*(?<value>[\\d\\s.,]+\\s*[KMGTPE]?i?B)", "transform": "bytes"  },
-      "ratio":           { "regex": "(?:desktop|mobile)-sidebar-ratio-total[\\s\\S]*?sidebar-account-ratio__value[^>]*>\\s*(?<value>[\\d\\s.,]+)",                         "transform": "number" },
-      "seeding":         { "regex": "Torrents\\s+actifs\\s*\\((?<value>\\d+)\\)",                                                                        "transform": "integer" }
+      "points":          { "regex": "hero-banknotes[\\s\\S]*?sidebar-account-stat__value[^>]*>\\s*(?<value>[\\d\\s.,]+)",                                                  "transform": "integer" },
+      "rate":            { "regex": "hero-bolt[\\s\\S]*?sidebar-account-stat__value[^>]*>\\s*(?<value>[\\d\\s.,]+)",                                                       "transform": "number"  }
     }
   },
   "dashboard": { "byteUnit": "binary" }

@@ -170,6 +170,7 @@
     .badge-ok    { background: color-mix(in srgb, var(--green) 16%, transparent); color: var(--green); }
     .badge-error { background: color-mix(in srgb, var(--red) 16%, transparent); color: var(--red); }
     .badge-loading { background: color-mix(in srgb, var(--blue) 14%, transparent); color: var(--blue); }
+    .badge-ratioless { background: color-mix(in srgb, var(--purple) 16%, transparent); color: var(--purple); }
 
     /* Stats grid */
     .stats {
@@ -758,6 +759,17 @@
     return stat.trackerUrl || configured?.baseUrl || '';
   }
 
+  function isRatiolessTracker(stat) {
+    const configured = trackerConfig.find(t => t.id === stat.id);
+    return Boolean(configured?.ratioless);
+  }
+
+  function ratiolessBadge(stat) {
+    return isRatiolessTracker(stat)
+      ? '<span class="badge badge-ratioless" title="Tracker sans ratio">Ratioless</span>'
+      : '';
+  }
+
   function trackerName(stat) {
     const href = trackerLink(stat);
     const name = escapeHtml(stat.name);
@@ -809,12 +821,14 @@
 
   function renderCard(stat) {
     const f = stat.fields;
+    const ratioless = isRatiolessTracker(stat);
     if (stat.status === 'error') {
       return `
         <div class="card">
           <div class="card-header">
             ${trackerName(stat)}
             <div class="card-header-actions">
+              ${ratiolessBadge(stat)}
               ${cardRefreshButton(stat)}
               <span class="badge badge-error">Erreur</span>
             </div>
@@ -834,11 +848,18 @@
     const hasRatio = hasStatValue(ratio);
     const buffer = formatBuffer(f);
 
+    const bottomCells = ratioless
+      ? `${statCell('Points', [formatCount(f.points), 'pts'], '', '')}
+         ${statCell('Taux',   [formatCount(f.rate),   'pts/jour'], '', 'col-bonus')}`
+      : `${statCell('Seeding', formatCount(f.seeding),   '', '')}
+         ${statCell('Bonus',   formatCount(f.seedBonus), '', '')}`;
+
     return `
       <div class="card">
           <div class="card-header">
             ${trackerName(stat)}
           <div class="card-header-actions">
+            ${ratiolessBadge(stat)}
             ${cardRefreshButton(stat)}
             <span class="badge badge-ok">OK</span>
           </div>
@@ -849,8 +870,7 @@
           ${statCell('Upload', formatBytes(f.uploadedBytes), '', '')}
           ${statCell('Ratio', hasRatio ? formatRatio(ratio) : '-', '', ratioClass(ratio))}
           ${statCell('Buffer', buffer, '', bufferClass(buffer))}
-          ${statCell('Seeding', formatCount(f.seeding), '', '')}
-          ${statCell('Bonus', formatCount(f.seedBonus), '', '')}
+          ${bottomCells}
         </div>
         ${scheduleControls(stat)}
         <div class="card-footer">Derniere connexion : ${lastLoginText(stat)}</div>

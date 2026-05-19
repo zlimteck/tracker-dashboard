@@ -2,6 +2,7 @@
   <img src="public/logo.png" alt="Tracker Dashboard" width="260">
 </p>
 
+> **Tu l'utilises ? Tu l'aimes ? [⭐ Mets une étoile !](https://github.com/Aerya/tracker-dashboard/stargazers)** — ça prend deux secondes.
 
 > [!WARNING]
 > Lors d’un rafraîchissement général ou du premier lancement, certains trackers peuvent temporairement afficher une erreur ou prendre du temps à se mettre à jour.
@@ -18,6 +19,16 @@ Tracker Dashboard est une WebUI pour suivre les statistiques de trackers BitTorr
 Le projet permet de configurer les trackers actifs, leurs identifiants, un proxy HTTP/HTTPS/SOCKS, des connexions automatiques espacées dans le temps et l'historique des statistiques en SQLite.
 
 Au premier accès, l'application demande de créer le compte administrateur de la WebUI.
+
+
+## Changements récents
+
+- Nostradamus passe en tracker Ratioless : les cartes affichent désormais **Points** et **Taux** à la place de Seeding et Bonus. Download, Upload, Ratio (calculé) et Buffer (calculé) restent inchangés.
+- HD-Only marqué comme Ratioless : un badge **Ratioless** apparaît sur les cartes HD-Only et Nostradamus, entre le nom du tracker et le bouton MàJ.
+- Image Docker buildée en multi-architecture (linux/amd64 + linux/arm64) via QEMU.
+- Mise en place de Dependabot pour npm, Docker et GitHub Actions, avec auto-merge des patches via workflow GitHub Actions.
+- Pin de l'image de base à `node:22.15.0-bookworm-slim` et bump des GitHub Actions vers les versions Node 24.
+- Bump des dépendances npm : Express 5, TypeScript 6, @types/node 25, axios 1.16, tsx 4.22.
 
 
 ## Captures d'écran
