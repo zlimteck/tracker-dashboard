@@ -235,7 +235,14 @@ export async function fetchWithBrowser(
     await waitForLiveView(page);
     await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
     if (tracker.id === 'nostradamus') {
-      await page.getByText(/Torrents actifs\s*\(\d+\)/).first().waitFor({ timeout: 10_000 }).catch(() => {});
+      // Activity est rendu cote client via Phoenix LiveView - on attend que
+      // l'ecran "Chargement de l'activite..." disparaisse avant de lire le HTML
+      await page.waitForFunction(
+        () => !document.getElementById('activity-loading-state'),
+        null,
+        { timeout: 30_000 },
+      ).catch(() => {});
+      await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
     }
     if (tracker.id === 'c411') {
       await page.getByText(/Envoy|Ratio|T[ée]l[ée]charg/i).first().waitFor({ timeout: 20_000 }).catch(() => {});
