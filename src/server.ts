@@ -300,15 +300,15 @@ const knownTrackerFields: Record<string, {
   nostradamus: {
     fetchUrl: 'activity',
     mode: 'browser',
-    byteUnit: 'binary',
+    byteUnit: 'decimal',
     ratioless: true,
     fields: {
       uploadedBytes: {
-        regex: '(?:desktop|mobile)-sidebar-uploaded-total[\\s\\S]*?sidebar-account-transfer__value[^>]*>\\s*(?<value>[\\d\\s.,]+\\s*[KMGTPE]?i?B)',
+        regex: '>\\s*Upload total\\s*<[\\s\\S]{0,400}?>\\s*(?<value>\\d[\\d.,]*\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))\\s*<',
         transform: 'bytes',
       },
       downloadedBytes: {
-        regex: '(?:desktop|mobile)-sidebar-downloaded-total[\\s\\S]*?sidebar-account-transfer__value[^>]*>\\s*(?<value>[\\d\\s.,]+\\s*[KMGTPE]?i?B)',
+        regex: '>\\s*Download total\\s*<[\\s\\S]{0,400}?>\\s*(?<value>\\d[\\d.,]*\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))\\s*<',
         transform: 'bytes',
       },
       points: {
