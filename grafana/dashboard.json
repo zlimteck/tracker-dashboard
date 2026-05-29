@@ -1,0 +1,604 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Tracker Dashboard - vue Prometheus des stats BitTorrent (upload, download, ratio, bonus, points).",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "type": "row",
+      "title": "Overview",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "Trackers - vue d'ensemble",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 1 },
+      "id": 1,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "tracker_ratio",
+          "instant": true,
+          "format": "table",
+          "legendFormat": "Ratio"
+        },
+        {
+          "refId": "B",
+          "expr": "tracker_uploaded_bytes",
+          "instant": true,
+          "format": "table",
+          "legendFormat": "Upload"
+        },
+        {
+          "refId": "C",
+          "expr": "tracker_downloaded_bytes",
+          "instant": true,
+          "format": "table",
+          "legendFormat": "Download"
+        },
+        {
+          "refId": "D",
+          "expr": "tracker_seed_bonus",
+          "instant": true,
+          "format": "table",
+          "legendFormat": "Bonus"
+        },
+        {
+          "refId": "E",
+          "expr": "tracker_up",
+          "instant": true,
+          "format": "table",
+          "legendFormat": "Etat"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "job": true,
+              "instance": true
+            },
+            "indexByName": {
+              "tracker": 0,
+              "name": 1,
+              "Value #A": 2,
+              "Value #C": 3,
+              "Value #B": 4,
+              "Value #D": 5,
+              "Value #E": 6
+            },
+            "renameByName": {
+              "tracker": "ID",
+              "name": "Tracker",
+              "Value #A": "Ratio",
+              "Value #B": "Upload",
+              "Value #C": "Download",
+              "Value #D": "Bonus",
+              "Value #E": "Up"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "center" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Upload" }, "properties": [{ "id": "unit", "value": "bytes" }] },
+          { "matcher": { "id": "byName", "options": "Download" }, "properties": [{ "id": "unit", "value": "bytes" }] },
+          { "matcher": { "id": "byName", "options": "Ratio" }, "properties": [{ "id": "decimals", "value": 2 }] },
+          { "matcher": { "id": "byName", "options": "Up" }, "properties": [
+            { "id": "mappings", "value": [
+              { "type": "value", "options": { "0": { "text": "Erreur", "color": "red" }, "1": { "text": "OK", "color": "green" } } }
+            ]},
+            { "id": "custom.cellOptions", "value": { "type": "color-text" } }
+          ]}
+        ]
+      },
+      "options": { "showHeader": true, "cellHeight": "sm" }
+    },
+    {
+      "type": "row",
+      "title": "Ratio",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "id": 101,
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "gauge",
+      "title": "Ratio - $tracker",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 4, "x": 0, "y": 10 },
+      "id": 2,
+      "repeat": "tracker",
+      "repeatDirection": "h",
+      "maxPerRow": 6,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "tracker_ratio{tracker=\"$tracker\"}",
+          "legendFormat": "{{tracker}}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "min": 0,
+          "max": 10,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 0.8 },
+              { "color": "yellow", "value": 1 },
+              { "color": "green", "value": 2 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Ratio dans le temps",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+      "id": 3,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "tracker_ratio{tracker=~\"$tracker\"}",
+          "legendFormat": "{{tracker}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "lineWidth": 2, "fillOpacity": 10, "showPoints": "never" },
+          "decimals": 2
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["last", "mean"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Upload / Download par tracker",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
+      "id": 102,
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "$tracker - Upload / Download",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 25 },
+      "id": 4,
+      "repeat": "tracker",
+      "repeatDirection": "h",
+      "maxPerRow": 2,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "tracker_uploaded_bytes{tracker=\"$tracker\"}",
+          "legendFormat": "upload"
+        },
+        {
+          "refId": "B",
+          "expr": "tracker_downloaded_bytes{tracker=\"$tracker\"}",
+          "legendFormat": "download"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "lineWidth": 1, "fillOpacity": 20, "showPoints": "never", "gradientMode": "opacity" }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "upload" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] },
+          { "matcher": { "id": "byName", "options": "download" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] }
+        ]
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Bonus Points",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 },
+      "id": 103,
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "gauge",
+      "title": "Bonus - $tracker",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 4, "x": 0, "y": 33 },
+      "id": 5,
+      "repeat": "tracker",
+      "repeatDirection": "h",
+      "maxPerRow": 6,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "tracker_seed_bonus{tracker=\"$tracker\"}",
+          "legendFormat": "{{tracker}}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 1000000,
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 10000 },
+              { "color": "yellow", "value": 100000 },
+              { "color": "green", "value": 500000 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Bonus Points dans le temps",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 39 },
+      "id": 6,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "tracker_seed_bonus{tracker=~\"$tracker\"}",
+          "legendFormat": "{{tracker}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "lineWidth": 2, "fillOpacity": 10 }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["last"] },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Daily (24h glissantes)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 47 },
+      "id": 104,
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Daily Download (delta 24h)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 48 },
+      "id": 7,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(tracker_downloaded_bytes{tracker=~\"$tracker\"}[1d])",
+          "legendFormat": "{{tracker}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "lineWidth": 2, "fillOpacity": 10 }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Daily Upload (delta 24h)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 48 },
+      "id": 8,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(tracker_uploaded_bytes{tracker=~\"$tracker\"}[1d])",
+          "legendFormat": "{{tracker}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "lineWidth": 2, "fillOpacity": 10 }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "type": "gauge",
+      "title": "Daily Ratio - $tracker (24h)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 4, "x": 0, "y": 56 },
+      "id": 9,
+      "repeat": "tracker",
+      "repeatDirection": "h",
+      "maxPerRow": 6,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(tracker_uploaded_bytes{tracker=\"$tracker\"}[1d]) / clamp_min(increase(tracker_downloaded_bytes{tracker=\"$tracker\"}[1d]), 1)",
+          "legendFormat": "{{tracker}}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "min": 0,
+          "max": 20,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 0.8 },
+              { "color": "yellow", "value": 1 },
+              { "color": "green", "value": 2 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "type": "barchart",
+      "title": "Bonus Points gagnes (delta 6h)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 62 },
+      "id": 10,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(tracker_seed_bonus{tracker=~\"$tracker\"}[6h])",
+          "legendFormat": "{{tracker}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "custom": { "fillOpacity": 80 }
+        }
+      },
+      "options": {
+        "orientation": "auto",
+        "showValue": "never",
+        "stacking": "none",
+        "groupWidth": 0.7,
+        "barWidth": 0.9,
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Ratioless (Points / Taux)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 70 },
+      "id": 105,
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Points (ratioless)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 71 },
+      "id": 11,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "tracker_points{tracker=~\"$tracker\"}",
+          "legendFormat": "{{tracker}}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "decimals": 0, "color": { "mode": "palette-classic" } }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Taux (pts/jour, ratioless)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 71 },
+      "id": 12,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "tracker_rate_per_day{tracker=~\"$tracker\"}",
+          "legendFormat": "{{tracker}}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "decimals": 0, "color": { "mode": "palette-classic" } }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Etat des sites",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 77 },
+      "id": 106,
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Etat fetch (1 = OK, 0 = erreur)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 5, "w": 12, "x": 0, "y": 78 },
+      "id": 13,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "tracker_up{tracker=~\"$tracker\"}",
+          "legendFormat": "{{tracker}}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "ERR", "color": "red" }, "1": { "text": "OK", "color": "green" } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Site joignable (ping)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 5, "w": 12, "x": 12, "y": 78 },
+      "id": 14,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "tracker_site_reachable{tracker=~\"$tracker\"}",
+          "legendFormat": "{{tracker}}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "HS", "color": "red" }, "1": { "text": "OK", "color": "green" } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    }
+  ],
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "tags": ["tracker", "bittorrent"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": false, "text": "Prometheus", "value": "Prometheus" },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Datasource",
+        "name": "DS_PROMETHEUS",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": { "selected": true, "text": ["All"], "value": ["$__all"] },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "definition": "label_values(tracker_uploaded_bytes, tracker)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Tracker",
+        "multi": true,
+        "name": "tracker",
+        "options": [],
+        "query": {
+          "query": "label_values(tracker_uploaded_bytes, tracker)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": { "from": "now-30d", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Tracker Dashboard",
+  "uid": "tracker-dashboard",
+  "version": 1,
+  "weekStart": ""
+}

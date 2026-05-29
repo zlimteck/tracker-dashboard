@@ -20,6 +20,8 @@ Le projet permet de configurer les trackers actifs, leurs identifiants, un proxy
 
 Au premier accès, l'application demande de créer le compte administrateur de la WebUI.
 
+Export Prometheus + dashboard Grafana — endpoint `/metrics` (protégé par token via la variable d'env `METRICS_TOKEN`) exposant les stats de tous les trackers activés au format Prometheus. Dashboard Grafana JSON fourni dans `grafana/dashboard.json` (jauges de ratio, courbes upload/download par tracker, bonus points, deltas quotidiens, état OK/HS). Voir [grafana/README.md](grafana/README.md) pour l'installation.
+
 
 ## Changements récents
 
@@ -27,6 +29,7 @@ Au premier accès, l'application demande de créer le compte administrateur de l
 - Ajout TorrentLeech (PR)
 - Check de joignabilité en cazs d'erreur de login
 - Ajout Seedpool
+- Export Prometheus + dashboard Grafana : endpoint `/metrics` protégé par token (`METRICS_TOKEN`) et dashboard JSON prêt à importer dans `grafana/`.
 
 
 ## Captures d'écran

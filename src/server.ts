@@ -768,6 +768,71 @@ function startScheduler(): void {
   }, 60_000);
 }
 
+// ─── Prometheus metrics ───────────────────────────────────────────────────────
+
+function escapeLabel(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+}
+
+function toNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const n = parseFloat(value.replace(/[\s ]/g, '').replace(',', '.'));
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function renderPrometheusMetrics(stats: TrackerStats[]): string {
+  const definitions: Array<{ name: string; help: string; type: 'gauge' | 'counter'; pick: (s: TrackerStats) => number | null }> = [
+    { name: 'tracker_uploaded_bytes',   help: 'Total uploaded bytes', type: 'gauge', pick: s => toNumber(s.fields.uploadedBytes) },
+    { name: 'tracker_downloaded_bytes', help: 'Total downloaded bytes', type: 'gauge', pick: s => toNumber(s.fields.downloadedBytes) },
+    { name: 'tracker_ratio',            help: 'Ratio (scraped or computed up/down)', type: 'gauge', pick: s => {
+        const r = toNumber(s.fields.ratio);
+        if (r !== null) return r;
+        const up = toNumber(s.fields.uploadedBytes);
+        const down = toNumber(s.fields.downloadedBytes);
+        if (up === null || down === null) return null;
+        if (down === 0) return up > 0 ? Number.POSITIVE_INFINITY : 0;
+        return up / down;
+      } },
+    { name: 'tracker_buffer_bytes', help: 'Buffer = uploaded - downloaded (scraped if present)', type: 'gauge', pick: s => {
+        const b = toNumber(s.fields.bufferBytes);
+        if (b !== null) return b;
+        const up = toNumber(s.fields.uploadedBytes);
+        const down = toNumber(s.fields.downloadedBytes);
+        if (up === null || down === null) return null;
+        return up - down;
+      } },
+    { name: 'tracker_seed_bonus',     help: 'Bonus points', type: 'gauge', pick: s => toNumber(s.fields.seedBonus) },
+    { name: 'tracker_seeding_count',  help: 'Active seeding torrents', type: 'gauge', pick: s => toNumber(s.fields.seeding) },
+    { name: 'tracker_leeching_count', help: 'Active leeching torrents', type: 'gauge', pick: s => toNumber(s.fields.leeching) },
+    { name: 'tracker_points',         help: 'Points (ratioless trackers)', type: 'gauge', pick: s => toNumber(s.fields.points) },
+    { name: 'tracker_rate_per_day',   help: 'Points earned per day (ratioless)', type: 'gauge', pick: s => toNumber(s.fields.rate) },
+    { name: 'tracker_tokens',         help: 'Freeleech tokens', type: 'gauge', pick: s => toNumber(s.fields.tokens) },
+    { name: 'tracker_up',             help: '1 if last fetch succeeded, 0 if error', type: 'gauge', pick: s => s.status === 'ok' ? 1 : 0 },
+    { name: 'tracker_site_reachable', help: '1 if last ping succeeded, 0 if failed, absent if not measured', type: 'gauge', pick: s => typeof s.siteReachable === 'boolean' ? (s.siteReachable ? 1 : 0) : null },
+    { name: 'tracker_last_update_timestamp_seconds', help: 'Unix timestamp of last refresh', type: 'gauge', pick: s => {
+        const t = Date.parse(s.lastUpdated);
+        return Number.isFinite(t) ? Math.floor(t / 1000) : null;
+      } },
+  ];
+
+  const lines: string[] = [];
+  for (const def of definitions) {
+    lines.push(`# HELP ${def.name} ${def.help}`);
+    lines.push(`# TYPE ${def.name} ${def.type}`);
+    for (const stat of stats) {
+      const value = def.pick(stat);
+      if (value === null) continue;
+      const labels = `tracker="${escapeLabel(stat.id)}",name="${escapeLabel(stat.name)}"`;
+      const printable = Number.isFinite(value) ? value : (value > 0 ? '+Inf' : '-Inf');
+      lines.push(`${def.name}{${labels}} ${printable}`);
+    }
+  }
+  return lines.join('\n') + '\n';
+}
+
 export async function start(): Promise<void> {
   importLegacySettingsIfNeeded();
   importLegacyCredentialsIfNeeded();
@@ -818,6 +883,21 @@ export async function start(): Promise<void> {
   app.post('/api/auth/logout', (_req, res) => {
     res.setHeader('Set-Cookie', `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);
     res.json({ ok: true });
+  });
+
+  // ── Prometheus /metrics (token, hors session) ──────────────────────────────
+  app.get('/metrics', (req, res) => {
+    const token = process.env.METRICS_TOKEN;
+    if (!token) {
+      res.status(503).type('text/plain').send('METRICS_TOKEN env var not set on the server');
+      return;
+    }
+    const auth = req.headers.authorization;
+    if (auth !== `Bearer ${token}`) {
+      res.status(401).type('text/plain').send('Unauthorized');
+      return;
+    }
+    res.type('text/plain; version=0.0.4; charset=utf-8').send(renderPrometheusMetrics(cachedStats));
   });
 
   app.use((req, res, next) => {

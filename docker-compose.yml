@@ -5,5 +5,9 @@ services:
     restart: always
     ports:
       - "3000:3000"
+    environment:
+      # Token pour proteger l'endpoint /metrics (Prometheus).
+      # Laisse vide ou retire la ligne pour desactiver l'export (l'endpoint renverra 503).
+      METRICS_TOKEN: ""
     volumes:
       - ./config:/app/config
