@@ -264,10 +264,6 @@ const knownTrackerFields: Record<string, {
         regex: '(?<value>\\d[\\d\\s.,]*\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))[\\s\\S]{0,260}?Envoy',
         transform: 'bytes',
       },
-      ratio: {
-        regex: '(?<value>\\d[\\d\\s.,]*)[\\s\\S]{0,160}?Ratio',
-        transform: 'number',
-      },
       downloadedBytes: {
         regex: '(?<value>\\d[\\d\\s.,]*\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))[\\s\\S]{0,260}?T(?:élé|ele|[ée]l[ée])charg',
         transform: 'bytes',
