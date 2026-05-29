@@ -321,6 +321,28 @@ const knownTrackerFields: Record<string, {
       },
     },
   },
+  torrentleech: {
+    fetchUrl: '/',
+    byteUnit: 'decimal',
+    fields: {
+      uploadedBytes: {
+        regex: 'title="Uploaded \\(Seeding\\)"[\\s\\S]*?<span[^>]*>(?<value>[\\d\\s.,]+\\s*(?:[KMGTPE](?:B|io|o)|B))</span>',
+        transform: 'bytes',
+      },
+      downloadedBytes: {
+        regex: 'title="Downloaded \\(Leeching\\)"[\\s\\S]*?<span[^>]*>(?<value>[\\d\\s.,]+\\s*(?:[KMGTPE](?:B|io|o)|B))</span>',
+        transform: 'bytes',
+      },
+      ratio: {
+        regex: 'title="Ratio"[\\s\\S]*?<i[^>]*></i>\\s*(?<value>[\\d\\s.,]+)',
+        transform: 'number',
+      },
+      seedBonus: {
+        regex: 'TL Points:[^<]*<span class="total-TL-points">(?<value>[^<]+)</span>',
+        transform: 'string',
+      },
+    },
+  },
 };
 
 function normalizeTrackerConfigs(): TrackerConfig[] {
@@ -404,6 +426,21 @@ function normalizeTrackerConfigs(): TrackerConfig[] {
         'name="password"',
         'name="username"',
         'Se connecter',
+      ];
+      changed = true;
+    }
+    if (tracker.id === 'torrentleech') {
+      if (tracker.login.url !== 'user/account/login/') {
+        tracker.login.url = 'user/account/login/';
+        changed = true;
+      }
+      tracker.login.failurePatterns = [
+        ...new Set([
+          ...tracker.login.failurePatterns,
+          'Invalid Username and/or Password',
+          'type="password"',
+          'name="password"',
+        ]),
       ];
       changed = true;
     }
