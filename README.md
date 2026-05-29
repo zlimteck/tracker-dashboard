@@ -23,12 +23,9 @@ Au premier accès, l'application demande de créer le compte administrateur de l
 
 ## Changements récents
 
-- Nostradamus passe en tracker Ratioless : les cartes affichent désormais **Points** et **Taux** à la place de Seeding et Bonus. Download, Upload, Ratio (calculé) et Buffer (calculé) restent inchangés.
-- HD-Only marqué comme Ratioless : un badge **Ratioless** apparaît sur les cartes HD-Only et Nostradamus, entre le nom du tracker et le bouton MàJ.
-- Image Docker buildée en multi-architecture (linux/amd64 + linux/arm64) via QEMU.
-- Mise en place de Dependabot pour npm, Docker et GitHub Actions, avec auto-merge des patches via workflow GitHub Actions.
-- Pin de l'image de base à `node:22.15.0-bookworm-slim` et bump des GitHub Actions vers les versions Node 24.
-- Bump des dépendances npm : Express 5, TypeScript 6, @types/node 25, axios 1.16, tsx 4.22.
+- Fix ratio C411
+- Ajout TorrentLeech (PR)
+- Check de joignabilité en cazs d'erreur de login
 
 
 ## Captures d'écran

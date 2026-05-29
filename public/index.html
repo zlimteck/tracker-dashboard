@@ -169,6 +169,7 @@
     }
     .badge-ok    { background: color-mix(in srgb, var(--green) 16%, transparent); color: var(--green); }
     .badge-error { background: color-mix(in srgb, var(--red) 16%, transparent); color: var(--red); }
+    .badge-offline { background: color-mix(in srgb, var(--yellow) 16%, transparent); color: var(--yellow); }
     .badge-loading { background: color-mix(in srgb, var(--blue) 14%, transparent); color: var(--blue); }
     .badge-ratioless { background: color-mix(in srgb, var(--purple) 16%, transparent); color: var(--purple); }
 
@@ -823,12 +824,16 @@
     const f = stat.fields;
     const ratioless = isRatiolessTracker(stat);
     if (stat.status === 'error') {
+      const offlineBadge = stat.siteReachable === false
+        ? '<span class="badge badge-offline" title="Le site ne repond pas (DNS/TCP/TLS/proxy KO)">Site hors ligne</span>'
+        : '';
       return `
         <div class="card">
           <div class="card-header">
             ${trackerName(stat)}
             <div class="card-header-actions">
               ${ratiolessBadge(stat)}
+              ${offlineBadge}
               ${cardRefreshButton(stat)}
               <span class="badge badge-error">Erreur</span>
             </div>

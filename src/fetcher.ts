@@ -434,6 +434,38 @@ async function doLogin(
   console.log(`  [${tracker.name}] Login OK`);
 }
 
+// ─── Ping (reachability) ──────────────────────────────────────────────────────
+
+/**
+ * Ping rapide via HEAD (fallback GET) sur baseUrl pour distinguer
+ * "site HS" d'une erreur d'auth/config. Toute reponse HTTP (meme 4xx/5xx)
+ * = site joignable. Echec reseau / TLS / proxy / timeout = injoignable.
+ */
+export async function pingTracker(tracker: TrackerConfig): Promise<boolean> {
+  const url = tracker.baseUrl;
+  const config = {
+    timeout: 10_000,
+    maxRedirects: 5,
+    validateStatus: () => true,
+    ...getProxyConfig(),
+    headers: {
+      'User-Agent': selectUserAgent(),
+      'Accept': 'text/html,*/*;q=0.8',
+    },
+  };
+  try {
+    await axios.head(url, config);
+    return true;
+  } catch {
+    try {
+      await axios.get(url, { ...config, responseType: 'text' });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
 // ─── Fetch principal ──────────────────────────────────────────────────────────
 
 export async function fetchTracker(
@@ -584,12 +616,14 @@ export async function fetchTracker(
     return await attempt();
   } catch (err: unknown) {
     invalidateSession(tracker.id); // reset pour le prochain cycle
+    const siteReachable = await pingTracker(tracker).catch(() => false);
     return {
       id:          tracker.id,
       name:        tracker.name,
       trackerUrl:  tracker.baseUrl,
       status:      'error',
       error:       friendlyError(err),
+      siteReachable,
       lastUpdated: new Date().toISOString(),
       byteUnit:    tracker.dashboard?.byteUnit ?? 'binary',
       fields:      {},

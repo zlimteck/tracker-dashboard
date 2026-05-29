@@ -73,6 +73,8 @@ export interface TrackerStats {
   trackerUrl?: string;
   status: 'ok' | 'error';
   error?: string;
+  /** Resultat d'un ping HTTP sur baseUrl — false = site injoignable (DNS/TCP/TLS/proxy KO) */
+  siteReachable?: boolean;
   lastUpdated: string;
   lastLoginAt?: string;
   byteUnit: 'binary' | 'decimal';
