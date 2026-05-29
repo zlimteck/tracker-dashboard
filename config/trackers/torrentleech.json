@@ -1,0 +1,29 @@
+{
+  "id": "torrentleech",
+  "name": "TorrentLeech",
+  "baseUrl": "https://www.torrentleech.org",
+  "enabled": true,
+  "login": {
+    "url": "user/account/login/",
+    "method": "POST",
+    "contentType": "form",
+    "body": {
+      "username": "{{username}}",
+      "password": "{{password}}"
+    },
+    "failurePatterns": [
+      "Invalid Username and/or Password"
+    ]
+  },
+  "fetch": {
+    "url": "/",
+    "responseType": "html",
+    "fields": {
+      "uploadedBytes":   { "regex": "title=\"Uploaded \\(Seeding\\)\"[\\s\\S]*?<span[^>]*>(?<value>[\\d\\s.,]+\\s*(?:[KMGTPE](?:B|io|o)|B))</span>", "transform": "bytes" },
+      "downloadedBytes": { "regex": "title=\"Downloaded \\(Leeching\\)\"[\\s\\S]*?<span[^>]*>(?<value>[\\d\\s.,]+\\s*(?:[KMGTPE](?:B|io|o)|B))</span>", "transform": "bytes" },
+      "ratio":           { "regex": "title=\"Ratio\"[\\s\\S]*?<i[^>]*></i>\\s*(?<value>[\\d\\s.,]+)", "transform": "number" },
+      "seedBonus":       { "regex": "TL Points:[^<]*<span class=\"total-TL-points\">(?<value>[^<]+)</span>", "transform": "string" }
+    }
+  },
+  "dashboard": { "byteUnit": "decimal" }
+}
