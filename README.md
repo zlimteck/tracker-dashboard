@@ -26,6 +26,7 @@ Au premier accès, l'application demande de créer le compte administrateur de l
 - Fix ratio C411
 - Ajout TorrentLeech (PR)
 - Check de joignabilité en cazs d'erreur de login
+- Ajout Seedpool
 
 
 ## Captures d'écran

@@ -157,6 +157,11 @@ const knownTrackerFields: Record<string, {
     byteUnit: 'binary',
     fields: unit3dFields,
   },
+  seedpool: {
+    fetchUrl: '/',
+    byteUnit: 'binary',
+    fields: unit3dFields,
+  },
   abnormal: {
     fetchUrl: '/',
     byteUnit: 'decimal',
@@ -324,7 +329,7 @@ function normalizeTrackerConfigs(): TrackerConfig[] {
   for (const tracker of trackers) {
     let changed = false;
     const isHdOnlyLikeTracker = ['hdonly', 'hdforever'].includes(tracker.id);
-    const isUnit3dTracker = ['theoldschool', 'generationfree', 'teamflix', 'g3mini'].includes(tracker.id);
+    const isUnit3dTracker = ['theoldschool', 'generationfree', 'teamflix', 'g3mini', 'seedpool'].includes(tracker.id);
     if (tracker.id === 'hdonly' && tracker.login.failurePatterns.includes('login.php')) {
       tracker.login.failurePatterns = tracker.login.failurePatterns
         .filter(pattern => pattern !== 'login.php');
