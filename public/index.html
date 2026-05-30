@@ -848,11 +848,24 @@
       : '';
   }
 
+  // Notes d'incident en cours d'edition - survit aux re-renders du grid (toutes les
+  // 60s, ou 2s pendant un refresh) qui detruisent et recreent les textareas.
+  const pendingIncidentNotes = {};
+
+  function captureIncidentNotes() {
+    document.querySelectorAll('textarea[id^="incident-note-"]').forEach(ta => {
+      const tid = ta.id.slice('incident-note-'.length);
+      pendingIncidentNotes[tid] = ta.value;
+    });
+  }
+
   function renderIncidentBox(stat) {
     const incident = stat.incident || { acknowledged: false, note: '' };
     const isAck = incident.acknowledged === true;
     const noteId = `incident-note-${stat.id}`;
-    const noteValue = escapeHtml(incident.note || '');
+    // Priorite a la saisie locale en cours si elle existe
+    const rawNote = pendingIncidentNotes[stat.id] ?? incident.note ?? '';
+    const noteValue = escapeHtml(rawNote);
     const statusText = isAck
       ? 'Incident actif — refresh continue, sera leve automatiquement quand le tracker repond OK.'
       : 'Si le souci vient du tracker (pas de tes credentials), marque-le pour basculer le badge en neutre.';
@@ -875,21 +888,25 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ acknowledged, note }),
     });
-    const d = await r.json();
+    const d = await r.json().catch(() => ({ ok: false, error: `HTTP ${r.status}` }));
     if (!d.ok) throw new Error(d.error || 'Erreur incident');
+    // Le serveur a la note - on purge le cache local pour ce tracker
+    delete pendingIncidentNotes[trackerId];
     await loadStats();
   }
 
   async function toggleIncident(trackerId, acknowledged) {
     const note = document.getElementById(`incident-note-${trackerId}`)?.value ?? '';
+    pendingIncidentNotes[trackerId] = note;
     try { await postIncident(trackerId, acknowledged, note); }
-    catch(e) { console.warn('toggleIncident:', e.message); }
+    catch(e) { alert('Impossible de modifier l\'incident : ' + e.message); }
   }
 
   async function saveIncidentNote(trackerId, acknowledged) {
     const note = document.getElementById(`incident-note-${trackerId}`)?.value ?? '';
+    pendingIncidentNotes[trackerId] = note;
     try { await postIncident(trackerId, acknowledged, note); }
-    catch(e) { console.warn('saveIncidentNote:', e.message); }
+    catch(e) { alert('Impossible d\'enregistrer la note : ' + e.message); }
   }
 
   function formatReachabilityReason(reach) {
@@ -1278,7 +1295,24 @@
     }
 
     const sortedStats = [...data.stats].sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
+
+    // Sauve la saisie en cours + le focus avant de detruire le DOM
+    captureIncidentNotes();
+    const active = document.activeElement;
+    const focusSnap = (active && active.tagName === 'TEXTAREA' && active.id.startsWith('incident-note-'))
+      ? { id: active.id, start: active.selectionStart, end: active.selectionEnd }
+      : null;
+
     grid.innerHTML = sortedStats.map(renderCard).join('');
+
+    // Restaure le focus dans le textarea que l'utilisateur etait en train d'editer
+    if (focusSnap) {
+      const el = document.getElementById(focusSnap.id);
+      if (el) {
+        el.focus();
+        try { el.setSelectionRange(focusSnap.start, focusSnap.end); } catch {}
+      }
+    }
     document.getElementById('last-updated').textContent =
       data.lastRefresh ? `Mis à jour ${relativeTime(data.lastRefresh)}` : '—';
 
@@ -1422,7 +1456,7 @@
   // crypto.randomUUID n'existe qu'en contexte securise (HTTPS / localhost) - fallback simple
   function genId() {
     if (window.crypto && typeof window.crypto.randomUUID === 'function') {
-      return window.genId();
+      return window.crypto.randomUUID();
     }
     return 'oid-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
   }
