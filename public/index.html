@@ -290,6 +290,34 @@
       margin: 0 auto;
     }
     #proxy-panel h2 { font-size: 13px; font-weight: 600; margin-bottom: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+    .proxy-override-card {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+      background: color-mix(in srgb, var(--bg-elev) 60%, transparent);
+    }
+    .proxy-override-card .row { display: grid; grid-template-columns: auto 1fr 110px 1fr 130px 1fr auto; gap: 8px; align-items: end; margin-bottom: 8px; }
+    .proxy-override-card .row + .row { grid-template-columns: 1fr 1fr; }
+    .proxy-override-card label { display: block; font-size: 11px; margin-bottom: 2px; color: var(--muted); }
+    .proxy-override-card input[type="text"], .proxy-override-card input[type="password"], .proxy-override-card select {
+      width: 100%;
+    }
+    .proxy-override-trackers {
+      display: flex; flex-wrap: wrap; gap: 6px 10px;
+      padding: 8px 10px; border: 1px dashed var(--border); border-radius: 6px;
+      max-height: 110px; overflow-y: auto;
+    }
+    .proxy-override-trackers label {
+      display: inline-flex; align-items: center; gap: 4px;
+      margin: 0; font-size: 12px; color: var(--text); cursor: pointer;
+    }
+    .proxy-override-trackers input { margin: 0; }
+    .proxy-override-delete {
+      background: transparent; border: 1px solid var(--red); color: var(--red);
+      padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 12px;
+    }
+    .proxy-override-delete:hover { background: color-mix(in srgb, var(--red) 14%, transparent); }
 
     .proxy-form {
       display: grid;
@@ -619,6 +647,18 @@
       <button class="btn-save" onclick="saveSettings()">Enregistrer</button>
       <button class="btn-test" onclick="testProxy()">Tester</button>
       <span id="proxy-test-result"></span>
+    </div>
+
+    <!-- ── Overrides par tracker ────────────────────────────────────────── -->
+    <h2 style="margin-top:24px">Proxys spécifiques par tracker</h2>
+    <p style="font-size:12px; color:var(--muted); margin-bottom:12px">
+      Surcharge le proxy global pour les trackers cochés. Un tracker ne peut être couvert que par un seul proxy actif à la fois.
+    </p>
+    <div id="proxy-overrides-list"></div>
+    <div class="proxy-actions" style="margin-top:12px">
+      <button class="btn-test" onclick="addProxyOverride()">+ Ajouter un proxy</button>
+      <button class="btn-save" onclick="saveProxyOverrides()">Enregistrer les overrides</button>
+      <span id="proxy-overrides-result"></span>
     </div>
   </div>
 </div>
@@ -1290,6 +1330,149 @@
     }
   }
 
+  // ─── Proxy overrides (par tracker) ─────────────────────────────────────────
+
+  let proxyOverridesState = []; // mirroir local des overrides en cours d'edition
+
+  async function loadProxyOverrides() {
+    try {
+      const r = await fetch('/api/settings/proxy-overrides');
+      const d = await r.json();
+      proxyOverridesState = (d.overrides || []).map(normalizeOverride);
+      renderProxyOverrides();
+    } catch(e) { console.warn('Proxy overrides unavailable', e); }
+  }
+
+  function normalizeOverride(o) {
+    return {
+      id:       o.id || crypto.randomUUID(),
+      label:    o.label || '',
+      enabled:  Boolean(o.enabled),
+      trackers: Array.isArray(o.trackers) ? o.trackers : [],
+      type:     o.type || 'socks5',
+      host:     o.host || '',
+      port:     o.port || '',
+      username: o.username || '',
+      password: o.password || '',
+    };
+  }
+
+  function renderProxyOverrides() {
+    const container = document.getElementById('proxy-overrides-list');
+    if (!container) return;
+    if (proxyOverridesState.length === 0) {
+      container.innerHTML = '<p style="font-size:12px; color:var(--muted); font-style:italic; margin:0">Aucun override - le proxy global s\'applique à tous les trackers.</p>';
+      return;
+    }
+    container.innerHTML = proxyOverridesState.map(renderOverrideCard).join('');
+  }
+
+  function renderOverrideCard(o) {
+    const trackers = trackerConfig.length > 0 ? trackerConfig : [];
+    const checks = trackers.map(t => `
+      <label><input type="checkbox" data-tid="${escapeHtml(t.id)}" ${o.trackers.includes(t.id) ? 'checked' : ''}/> ${escapeHtml(t.name)}</label>
+    `).join('');
+    return `
+      <div class="proxy-override-card" data-oid="${escapeHtml(o.id)}">
+        <div class="row">
+          <label class="toggle-switch" title="Activer cet override" style="margin-bottom:0">
+            <input type="checkbox" data-field="enabled" ${o.enabled ? 'checked' : ''}>
+            <div class="toggle-track"><div class="toggle-knob"></div></div>
+          </label>
+          <div>
+            <label>Nom</label>
+            <input type="text" data-field="label" value="${escapeHtml(o.label)}" placeholder="ex: Proxy résidentiel" />
+          </div>
+          <div>
+            <label>Type</label>
+            <select data-field="type">
+              <option value="socks5" ${o.type === 'socks5' ? 'selected' : ''}>SOCKS5</option>
+              <option value="socks4" ${o.type === 'socks4' ? 'selected' : ''}>SOCKS4</option>
+              <option value="http"   ${o.type === 'http'   ? 'selected' : ''}>HTTP</option>
+              <option value="https"  ${o.type === 'https'  ? 'selected' : ''}>HTTPS</option>
+            </select>
+          </div>
+          <div>
+            <label>Hôte</label>
+            <input type="text" data-field="host" value="${escapeHtml(o.host)}" placeholder="127.0.0.1" />
+          </div>
+          <div>
+            <label>Port</label>
+            <input type="text" data-field="port" value="${escapeHtml(o.port)}" placeholder="1080" />
+          </div>
+          <div>
+            <label>Utilisateur</label>
+            <input type="text" data-field="username" value="${escapeHtml(o.username)}" placeholder="—" />
+          </div>
+          <button class="proxy-override-delete" onclick="deleteProxyOverride('${escapeHtml(o.id)}')">Supprimer</button>
+        </div>
+        <div class="row">
+          <div>
+            <label>Mot de passe</label>
+            <input type="password" data-field="password" value="${escapeHtml(o.password)}" placeholder="—" />
+          </div>
+          <div>
+            <label>Trackers couverts par ce proxy</label>
+            <div class="proxy-override-trackers" data-trackers>${checks || '<span style="font-size:12px;color:var(--muted)">Chargement des trackers…</span>'}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function collectOverridesFromDom() {
+    const cards = document.querySelectorAll('.proxy-override-card');
+    return Array.from(cards).map(card => {
+      const id = card.getAttribute('data-oid');
+      const field = (name) => card.querySelector(`[data-field="${name}"]`);
+      const trackers = Array.from(card.querySelectorAll('[data-trackers] input[type="checkbox"]:checked')).map(el => el.getAttribute('data-tid'));
+      return {
+        id,
+        label:    field('label').value.trim(),
+        enabled:  field('enabled').checked,
+        type:     field('type').value,
+        host:     field('host').value.trim(),
+        port:     field('port').value.trim(),
+        username: field('username').value.trim(),
+        password: field('password').value,
+        trackers,
+      };
+    });
+  }
+
+  function addProxyOverride() {
+    proxyOverridesState = collectOverridesFromDom();
+    proxyOverridesState.push(normalizeOverride({ id: crypto.randomUUID(), enabled: false }));
+    renderProxyOverrides();
+  }
+
+  function deleteProxyOverride(id) {
+    proxyOverridesState = collectOverridesFromDom().filter(o => o.id !== id);
+    renderProxyOverrides();
+  }
+
+  async function saveProxyOverrides() {
+    const result = document.getElementById('proxy-overrides-result');
+    result.style.color = 'var(--muted)';
+    result.textContent = 'Enregistrement...';
+    try {
+      const overrides = collectOverridesFromDom();
+      const r = await fetch('/api/settings/proxy-overrides', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ overrides }),
+      });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || 'Erreur inconnue');
+      result.style.color = 'var(--green)';
+      result.textContent = '✅ Enregistré — sessions invalidées';
+      await loadProxyOverrides();
+    } catch(e) {
+      result.style.color = 'var(--red)';
+      result.textContent = '❌ ' + e.message;
+    }
+  }
+
   async function testProxy() {
     const result = document.getElementById('proxy-test-result');
     result.style.color = 'var(--muted)';
@@ -1329,6 +1512,7 @@
     await loadTrackerDefinitionsPanel();
     document.getElementById('grid').innerHTML = renderSkeleton(trackerCount);
     await loadConfig();
+    await loadProxyOverrides();
     document.getElementById('grid').innerHTML = renderSkeleton(trackerCount);
     await loadStats();
     // Polling léger toutes les 60s pour mettre à jour l'heure relative

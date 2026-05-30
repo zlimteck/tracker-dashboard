@@ -281,14 +281,14 @@ function attachCookieJar(client: AxiosInstance, jar: CookieJar): void {
   );
 }
 
-function createSession(): Session {
+function createSession(trackerId?: string): Session {
   const jar    = new CookieJar();
   const client = axios.create({
     withCredentials: true,
     timeout: 45_000,
     maxRedirects: 10,
     validateStatus: () => true, // on gère les erreurs nous-mêmes
-    ...getProxyConfig(),
+    ...getProxyConfig(trackerId),
     headers: {
       'User-Agent': selectUserAgent(),
       'Accept':
@@ -303,14 +303,14 @@ function createSession(): Session {
 
 function getSession(trackerId: string): Session {
   if (!sessions.has(trackerId)) {
-    sessions.set(trackerId, createSession());
+    sessions.set(trackerId, createSession(trackerId));
   }
   return sessions.get(trackerId)!;
 }
 
 export function invalidateSession(trackerId: string): void {
   // Recrée une session propre (nouveau jar = plus de vieux cookies)
-  sessions.set(trackerId, createSession());
+  sessions.set(trackerId, createSession(trackerId));
   closeBrowserSession(trackerId).catch(() => {});
 }
 
@@ -454,7 +454,7 @@ export async function pingTracker(tracker: TrackerConfig): Promise<SiteReachabil
     timeout: 10_000,
     maxRedirects: 5,
     validateStatus: () => true,
-    ...getProxyConfig(),
+    ...getProxyConfig(tracker.id),
     headers: {
       'User-Agent': selectUserAgent(),
       'Accept': 'text/html,*/*;q=0.8',

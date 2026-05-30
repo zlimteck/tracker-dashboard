@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { chromium, type BrowserContext, type Page } from 'playwright';
-import { loadProxySettings } from './proxy.js';
+import { resolveProxyForTracker } from './proxy.js';
 import { selectUserAgent } from './userAgent.js';
 import { type TrackerConfig } from './types.js';
 
@@ -33,8 +33,8 @@ function isAnubisChallenge(html: string): boolean {
     html.includes("Verification que vous n&#39;etes pas un robot");
 }
 
-function playwrightProxy(): { server: string; username?: string; password?: string } | undefined {
-  const proxy = loadProxySettings();
+function playwrightProxy(trackerId: string): { server: string; username?: string; password?: string } | undefined {
+  const proxy = resolveProxyForTracker(trackerId);
   if (!proxy.enabled || !proxy.host || !proxy.port) return undefined;
   const server = `${proxy.type}://${proxy.host}:${proxy.port}`;
   return {
@@ -54,7 +54,7 @@ async function getContext(tracker: TrackerConfig): Promise<BrowserContext> {
     {
       headless: true,
       userAgent: selectUserAgent(),
-      proxy: playwrightProxy(),
+      proxy: playwrightProxy(tracker.id),
       viewport: { width: 1365, height: 900 },
       locale: 'fr-FR',
     },

@@ -6,8 +6,10 @@ import { fetchTracker, invalidateAllSessions, invalidateSession } from './fetche
 import { type FieldExtractor, type TrackerConfig, type TrackerStats } from './types.js';
 import {
   loadProxySettings, saveProxySettings, buildProxyConfig, logProxyStatus,
-  type ProxySettings,
+  loadProxyOverrides, saveProxyOverrides,
+  type ProxySettings, type ProxyOverride,
 } from './proxy.js';
+import crypto from 'crypto';
 import {
   ensureTrackerSchedules,
   deleteTrackerCredentials,
@@ -1168,6 +1170,84 @@ export async function start(): Promise<void> {
     } catch (err: unknown) {
       const error = err instanceof Error ? err.message : String(err);
       console.error('[Proxy] Impossible de sauvegarder la config :', error);
+      res.status(500).json({ ok: false, error });
+    }
+  });
+
+  // ── Proxies par tracker (overrides) ───────────────────────────────────────
+  app.get('/api/settings/proxy-overrides', (_req, res) => {
+    // On masque les passwords par des bullets (cote front on differencie ainsi
+    // "rien" de "deja defini, ne pas reecrire")
+    const sanitized = loadProxyOverrides().map(o => ({
+      ...o,
+      password: o.password ? '••••••••' : '',
+    }));
+    res.json({ ok: true, overrides: sanitized });
+  });
+
+  app.post('/api/settings/proxy-overrides', (req, res) => {
+    try {
+      const incoming = req.body?.overrides;
+      if (!Array.isArray(incoming)) {
+        return res.status(400).json({ ok: false, error: 'Payload invalide — { overrides: [] } attendu' });
+      }
+      const previous = loadProxyOverrides();
+      const previousById = new Map(previous.map(o => [o.id, o]));
+
+      const validTrackerIds = new Set(normalizeTrackerConfigs().map(t => t.id));
+      const seenInEnabled = new Map<string, string>(); // trackerId -> overrideLabel
+
+      const cleaned: ProxyOverride[] = [];
+      for (const raw of incoming) {
+        if (!raw || typeof raw !== 'object') continue;
+        const id = typeof raw.id === 'string' && raw.id ? raw.id : crypto.randomUUID();
+        const prev = previousById.get(id);
+        const passwordIn = typeof raw.password === 'string' ? raw.password : '';
+        const override: ProxyOverride = {
+          id,
+          label:    typeof raw.label === 'string' ? raw.label.trim().slice(0, 64) : '',
+          enabled:  Boolean(raw.enabled),
+          trackers: Array.isArray(raw.trackers)
+            ? Array.from(new Set(raw.trackers.filter((t: unknown): t is string => typeof t === 'string' && validTrackerIds.has(t))))
+            : [],
+          type:     typeof raw.type === 'string' ? raw.type : 'socks5',
+          host:     typeof raw.host === 'string' ? raw.host.trim() : '',
+          port:     typeof raw.port === 'string' || typeof raw.port === 'number' ? String(raw.port).trim() : '',
+          username: typeof raw.username === 'string' ? raw.username.trim() : '',
+          // Si le front renvoie les bullets, on conserve le mot de passe existant
+          password: passwordIn === '••••••••' ? (prev?.password ?? '') : passwordIn,
+        };
+
+        if (override.enabled) {
+          for (const tid of override.trackers) {
+            const otherLabel = seenInEnabled.get(tid);
+            if (otherLabel !== undefined) {
+              return res.status(400).json({
+                ok: false,
+                error: `Le tracker "${tid}" est cible par plusieurs proxys actifs ("${otherLabel}" et "${override.label || override.id}"). Un tracker ne peut etre couvert que par un seul proxy actif a la fois.`,
+              });
+            }
+            seenInEnabled.set(tid, override.label || override.id);
+          }
+        }
+
+        cleaned.push(override);
+      }
+
+      // Calcul des trackers impactes (info pour logs) : union des trackers cibles AVANT et APRES
+      const affected = new Set<string>();
+      for (const o of previous) for (const t of o.trackers) affected.add(t);
+      for (const o of cleaned)  for (const t of o.trackers) affected.add(t);
+
+      saveProxyOverrides(cleaned);
+      // invalidateAllSessions ferme aussi tous les contextes Playwright -
+      // pas besoin de fermer individuellement les overrides
+      invalidateAllSessions();
+      console.log(`[Proxy] Overrides sauves (${cleaned.length}) — sessions invalidees (${affected.size} tracker(s) impactes)`);
+      res.json({ ok: true, count: cleaned.length });
+    } catch (err: unknown) {
+      const error = err instanceof Error ? err.message : String(err);
+      console.error('[Proxy] Sauvegarde overrides KO :', error);
       res.status(500).json({ ok: false, error });
     }
   });
