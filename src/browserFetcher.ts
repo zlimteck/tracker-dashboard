@@ -96,16 +96,26 @@ async function waitForTurnstile(page: Page): Promise<void> {
   ).catch(() => {});
 }
 
-async function waitForTrackerContent(tracker: TrackerConfig, page: Page): Promise<void> {
-  if (tracker.id !== 'tr4ker') return;
-  await page.waitForFunction(
-    () => {
-      const text = document.body?.innerText ?? '';
-      return text.includes('RATIO') && text.includes('UPLOAD') && text.includes('DOWNLOAD');
-    },
-    null,
-    { timeout: 60_000 },
-  ).catch(() => {});
+/**
+ * Renvoie true si on a detecte un indicateur DOM de session authentifiee pour le tracker.
+ * Permet de court-circuiter la detection de failurePatterns sur les SPAs qui affichent
+ * une coquille "non connecte" avant hydratation (cas TR4KER).
+ */
+async function waitForTrackerContent(tracker: TrackerConfig, page: Page): Promise<boolean> {
+  if (tracker.id !== 'tr4ker') return false;
+  try {
+    await page.waitForFunction(
+      () => {
+        const text = document.body?.innerText ?? '';
+        return text.includes('RATIO') && text.includes('UPLOAD') && text.includes('DOWNLOAD');
+      },
+      null,
+      { timeout: 60_000 },
+    );
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function safeContent(page: Page): Promise<string> {
@@ -220,7 +230,7 @@ async function ensureLoggedIn(
 export async function fetchWithBrowser(
   tracker: TrackerConfig,
   credentials: { username: string; password: string },
-): Promise<{ html: string; url: string }> {
+): Promise<{ html: string; url: string; authConfirmed: boolean }> {
   const context = await getContext(tracker);
   const page = await context.newPage();
   const url = resolveUrl(tracker.baseUrl, interpolate(tracker.fetch.url, {
@@ -252,8 +262,8 @@ export async function fetchWithBrowser(
     if (tracker.id === 'c411') {
       await page.getByText(/Envoy|Ratio|T[ée]l[ée]charg/i).first().waitFor({ timeout: 20_000 }).catch(() => {});
     }
-    await waitForTrackerContent(tracker, page);
-    return { html: await safeContent(page), url: page.url() };
+    const authConfirmed = await waitForTrackerContent(tracker, page);
+    return { html: await safeContent(page), url: page.url(), authConfirmed };
   } finally {
     await page.close().catch(() => {});
   }

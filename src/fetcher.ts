@@ -525,7 +525,12 @@ export async function fetchTracker(
   const attempt = async (isRetry = false): Promise<TrackerStats> => {
     if (tracker.fetch.mode === 'browser') {
       const browserResult = await fetchWithBrowser(tracker, creds);
-      const failed = hasBrowserAuthFailure(tracker, browserResult.url, browserResult.html);
+      // Si on a confirme la session via un indicateur DOM specifique (TR4KER : RATIO/UPLOAD/DOWNLOAD
+      // visibles apres hydratation SPA), on ignore les failurePatterns qui peuvent matcher
+      // la coquille initiale "non connectee".
+      const failed = browserResult.authConfirmed
+        ? null
+        : hasBrowserAuthFailure(tracker, browserResult.url, browserResult.html);
       if (failed) {
         if (!isRetry) {
           console.log(`  [${tracker.name}] Session navigateur expiree, re-login...`);
