@@ -111,7 +111,7 @@
       grid-template-columns: repeat(auto-fit, minmax(320px, 320px));
       justify-content: center;
       align-content: start;
-      align-items: start;
+      align-items: stretch;
       grid-auto-rows: max-content;
       gap: 18px;
       width: min(100%, 2010px);
@@ -124,9 +124,12 @@
       border-radius: var(--radius);
       overflow: hidden;
       transition: border-color .2s;
-      align-self: start;
+      display: flex;
+      flex-direction: column;
     }
     .card:hover { border-color: var(--blue); }
+    /* Pousse le footer en bas pour aligner les cartes de hauteurs proches */
+    .card-footer { margin-top: auto; }
 
     .card-header {
       display: flex;
@@ -145,11 +148,12 @@
     .card-badges {
       display: flex;
       flex-wrap: wrap;
+      align-items: center;
       gap: 6px;
+      min-height: 20px;
       padding: 6px 12px 8px;
       border-bottom: 1px solid var(--border);
     }
-    .card-badges:empty { display: none; }
     .card-refresh {
       min-width: 34px;
       height: 24px;
@@ -209,6 +213,19 @@
     }
     .incident-box button:hover { border-color: var(--blue); color: var(--blue); }
     .incident-box .incident-status { font-size: 11px; color: var(--muted); }
+    /* Etat replie : ligne compacte */
+    .incident-line {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      margin: 6px 18px 10px; font-size: 12px;
+    }
+    .incident-line .incident-note-text {
+      color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .incident-line .incident-links { display: flex; gap: 10px; flex-shrink: 0; }
+    .incident-line a, .incident-trigger {
+      color: var(--muted); cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+    }
+    .incident-line a:hover, .incident-trigger:hover { color: var(--blue); }
 
     /* Stats grid */
     .stats {
@@ -862,21 +879,45 @@
   function renderIncidentBox(stat) {
     const incident = stat.incident || { acknowledged: false, note: '' };
     const isAck = incident.acknowledged === true;
+    const id = escapeHtml(stat.id);
+    const expanded = expandedIncidents.has(stat.id);
+
+    // ── Etat REPLIE ──────────────────────────────────────────────────────────
+    if (!expanded) {
+      if (isAck) {
+        // Incident acquitte : ligne compacte avec la note + liens Editer / Lever
+        const noteLabel = incident.note
+          ? escapeHtml(incident.note)
+          : 'Incident connu (pas de note)';
+        return `
+          <div class="incident-line">
+            <span class="incident-note-text" title="${escapeHtml(incident.note)}">${noteLabel}</span>
+            <span class="incident-links">
+              <a onclick="toggleIncidentEditor('${id}')">Éditer</a>
+              <a onclick="toggleIncident('${id}', false)">Lever</a>
+            </span>
+          </div>`;
+      }
+      // Erreur non acquittee : simple lien discret pour ouvrir l'editeur
+      return `
+        <div class="incident-line">
+          <a class="incident-trigger" onclick="toggleIncidentEditor('${id}')">Signaler un incident connu</a>
+        </div>`;
+    }
+
+    // ── Etat DEPLIE (editeur) ────────────────────────────────────────────────
     const noteId = `incident-note-${stat.id}`;
-    // Priorite a la saisie locale en cours si elle existe
     const rawNote = pendingIncidentNotes[stat.id] ?? incident.note ?? '';
     const noteValue = escapeHtml(rawNote);
-    const statusText = isAck
-      ? 'Incident actif — refresh continue, sera leve automatiquement quand le tracker repond OK.'
-      : 'Si le souci vient du tracker (pas de tes credentials), marque-le pour basculer le badge en neutre.';
     const toggleLabel = isAck ? "Lever l'incident" : 'Marquer comme incident connu';
     return `
       <div class="incident-box">
-        <div class="incident-status">${statusText}</div>
+        <div class="incident-status">Si le souci vient du tracker (pas de tes credentials), marque-le pour basculer le badge en neutre.</div>
         <textarea id="${noteId}" placeholder="Note libre (optionnel) — ex: login HS cote tracker depuis le 28/05">${noteValue}</textarea>
         <div class="incident-actions">
-          <button onclick="toggleIncident('${escapeHtml(stat.id)}', ${!isAck})">${toggleLabel}</button>
-          <button onclick="saveIncidentNote('${escapeHtml(stat.id)}', ${isAck})">Enregistrer la note</button>
+          <button onclick="toggleIncident('${id}', ${!isAck})">${toggleLabel}</button>
+          <button onclick="saveIncidentNote('${id}', ${isAck})">Enregistrer la note</button>
+          <button onclick="toggleIncidentEditor('${id}')">Fermer</button>
         </div>
       </div>
     `;
@@ -890,8 +931,9 @@
     });
     const d = await r.json().catch(() => ({ ok: false, error: `HTTP ${r.status}` }));
     if (!d.ok) throw new Error(d.error || 'Erreur incident');
-    // Le serveur a la note - on purge le cache local pour ce tracker
+    // Le serveur a la note - on purge le cache local et on replie l'editeur
     delete pendingIncidentNotes[trackerId];
+    expandedIncidents.delete(trackerId);
     await loadStats();
   }
 
@@ -967,6 +1009,42 @@
       <button class="card-refresh" data-tracker="${escapeHtml(stat.id)}" onclick="refreshTracker(this.dataset.tracker, this)" title="Rafraichir ce tracker" aria-label="Rafraichir ce tracker">
         MàJ
       </button>`;
+  }
+
+  // Stats triees du dernier fetch + trackers dont l'editeur d'incident est deplie
+  let latestSortedStats = [];
+  const expandedIncidents = new Set();
+
+  // Re-rend la grille a partir des dernieres stats (sans re-fetch), en preservant
+  // la saisie en cours et le focus dans un textarea d'incident.
+  function renderGrid() {
+    const grid = document.getElementById('grid');
+    if (!grid || latestSortedStats.length === 0) return;
+
+    captureIncidentNotes();
+    const active = document.activeElement;
+    const focusSnap = (active && active.tagName === 'TEXTAREA' && active.id.startsWith('incident-note-'))
+      ? { id: active.id, start: active.selectionStart, end: active.selectionEnd }
+      : null;
+
+    grid.innerHTML = latestSortedStats.map(renderCard).join('');
+
+    if (focusSnap) {
+      const el = document.getElementById(focusSnap.id);
+      if (el) {
+        el.focus();
+        try { el.setSelectionRange(focusSnap.start, focusSnap.end); } catch {}
+      }
+    }
+  }
+
+  function toggleIncidentEditor(trackerId) {
+    if (expandedIncidents.has(trackerId)) expandedIncidents.delete(trackerId);
+    else expandedIncidents.add(trackerId);
+    renderGrid();
+    // Focus le textarea fraichement ouvert
+    const el = document.getElementById(`incident-note-${trackerId}`);
+    if (el) el.focus();
   }
 
   function renderCard(stat) {
@@ -1294,25 +1372,8 @@
       return;
     }
 
-    const sortedStats = [...data.stats].sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
-
-    // Sauve la saisie en cours + le focus avant de detruire le DOM
-    captureIncidentNotes();
-    const active = document.activeElement;
-    const focusSnap = (active && active.tagName === 'TEXTAREA' && active.id.startsWith('incident-note-'))
-      ? { id: active.id, start: active.selectionStart, end: active.selectionEnd }
-      : null;
-
-    grid.innerHTML = sortedStats.map(renderCard).join('');
-
-    // Restaure le focus dans le textarea que l'utilisateur etait en train d'editer
-    if (focusSnap) {
-      const el = document.getElementById(focusSnap.id);
-      if (el) {
-        el.focus();
-        try { el.setSelectionRange(focusSnap.start, focusSnap.end); } catch {}
-      }
-    }
+    latestSortedStats = [...data.stats].sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
+    renderGrid();
     document.getElementById('last-updated').textContent =
       data.lastRefresh ? `Mis à jour ${relativeTime(data.lastRefresh)}` : '—';
 
