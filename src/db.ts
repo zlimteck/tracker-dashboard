@@ -111,7 +111,14 @@ export function getJsonSetting<T>(key: string, fallback: T): T {
   const row = getDb().prepare('SELECT value FROM settings WHERE key = ?').get(key);
   if (!row?.value) return fallback;
   try {
-    return { ...fallback, ...JSON.parse(String(row.value)) };
+    const parsed = JSON.parse(String(row.value));
+    // Si fallback est un array : on renvoie parsed tel quel (un spread sur array
+    // donne {0:..., 1:...} et casse Array.isArray cote appelant)
+    if (Array.isArray(fallback)) return Array.isArray(parsed) ? (parsed as T) : fallback;
+    // Si fallback est un objet plain : on merge (preserve les cles par defaut)
+    if (fallback && typeof fallback === 'object') return { ...(fallback as object), ...parsed } as T;
+    // Sinon (primitif) : on renvoie parsed
+    return parsed as T;
   } catch {
     return fallback;
   }
