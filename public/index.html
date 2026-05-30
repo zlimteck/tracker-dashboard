@@ -146,6 +146,10 @@
       position: sticky; top: 0;
       background: var(--surface);
     }
+    .rows-table thead th.sortable { cursor: pointer; user-select: none; }
+    .rows-table thead th.sortable:hover { color: var(--text); }
+    .rows-table thead th .sort-ind { font-size: 10px; opacity: .4; margin-left: 2px; }
+    .rows-table thead th .sort-ind.active { opacity: 1; color: var(--blue); }
     .rows-table tbody td {
       padding: 9px 10px;
       border-bottom: 1px solid var(--border);
@@ -785,9 +789,11 @@
     </p>
     <div class="proxyspin-promo">
       Besoin d'un proxy rotatif auto-hébergé pour les sites qui bannissent une IP fixe ?
-      Jette un œil à
+      Regardez par exemples du côté de
+      <a href="https://github.com/Kuucheen/magpie" target="_blank" rel="noreferrer noopener">Magpie</a>,
       <a href="https://github.com/Aerya/ProxySpin" target="_blank" rel="noreferrer noopener">ProxySpin</a>
-      — un rotateur de proxies en Docker, idéal à brancher ici en proxy par tracker.
+      ou encore
+      <a href="https://github.com/alpkeskin/rota" target="_blank" rel="noreferrer noopener">Rota</a>.
     </div>
     <div id="proxy-overrides-list"></div>
     <div class="proxy-actions" style="margin-top:12px">
@@ -1144,6 +1150,62 @@
     applyViewMode(viewMode === 'rows' ? 'cards' : 'rows');
   }
 
+  // ── Tri de la vue lignes ───────────────────────────────────────────────────
+  // key null = ordre par defaut (nom, tel que trie par loadStats)
+  let rowSort = { key: null, dir: 'asc' };
+
+  function toNum(v) {
+    if (v === Infinity) return Number.MAX_VALUE;
+    const n = parseFloat(String(v ?? '').replace(/[\s ]/g, '').replace(',', '.'));
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function rowSortValue(stat, key) {
+    const f = stat.fields;
+    switch (key) {
+      case 'name':     return stat.name.toLowerCase();
+      case 'lastconn': return new Date(stat.lastLoginAt || stat.lastUpdated).getTime() || 0;
+      case 'download': return toNum(f.downloadedBytes);
+      case 'upload':   return toNum(f.uploadedBytes);
+      case 'ratio':    return toNum(computedRatio(f));
+      case 'buffer': {
+        if (hasStatValue(f.bufferBytes)) return toNum(f.bufferBytes);
+        if (hasStatValue(f.uploadedBytes) && hasStatValue(f.downloadedBytes)) {
+          return Number(f.uploadedBytes) - Number(f.downloadedBytes);
+        }
+        return 0;
+      }
+      case 'seeding':  return toNum(f.seeding);
+      case 'bonus':    return toNum(hasStatValue(f.seedBonus) ? f.seedBonus : f.points);
+      case 'status':   return stat.status === 'error' ? 1 : 0; // erreurs regroupees
+      default:         return 0;
+    }
+  }
+
+  function sortStatsForRows(stats) {
+    if (!rowSort.key) return stats;
+    const mult = rowSort.dir === 'asc' ? 1 : -1;
+    return [...stats].sort((a, b) => {
+      const va = rowSortValue(a, rowSort.key);
+      const vb = rowSortValue(b, rowSort.key);
+      if (typeof va === 'string' || typeof vb === 'string') {
+        return String(va).localeCompare(String(vb), 'fr', { sensitivity: 'base' }) * mult;
+      }
+      return (va - vb) * mult;
+    });
+  }
+
+  function sortRows(key) {
+    if (rowSort.key === key) {
+      rowSort.dir = rowSort.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      rowSort.key = key;
+      // Par defaut : texte ascendant, valeurs numeriques descendantes (plus parlant)
+      rowSort.dir = key === 'name' ? 'asc' : 'desc';
+    }
+    renderGrid();
+  }
+
   function toggleIncidentEditor(trackerId) {
     if (expandedIncidents.has(trackerId)) expandedIncidents.delete(trackerId);
     else expandedIncidents.add(trackerId);
@@ -1293,9 +1355,9 @@
     const buf = isError ? '<span class="cell-muted">—</span>'
       : `<span class="${bufferClass(formatBuffer(f))}">${bufferText(f)}</span>`;
     const seeding = isError ? '<span class="cell-muted">—</span>' : formatCount(f.seeding);
-    const bonus   = isError ? '<span class="cell-muted">—</span>' : formatCount(f.seedBonus);
-    const points  = isError ? '<span class="cell-muted">—</span>' : formatCount(f.points);
-    const taux    = isError ? '<span class="cell-muted">—</span>' : formatCount(f.rate);
+    // Bonus : seedBonus pour les trackers a ratio, ou Points pour les ratioless
+    const bonusRaw = hasStatValue(f.seedBonus) ? f.seedBonus : f.points;
+    const bonus   = isError ? '<span class="cell-muted">—</span>' : formatCount(bonusRaw);
 
     const statusCell = isError
       ? `<td class="cell-status" onclick="toggleIncidentEditor('${id}')">${rowStatusBadges(stat)}<span class="chevron">›</span></td>`
@@ -1313,8 +1375,6 @@
         <td class="num">${buf}</td>
         <td class="num">${seeding}</td>
         <td class="num">${bonus}</td>
-        <td class="num">${points}</td>
-        <td class="num">${taux}</td>
         ${statusCell}
       </tr>`;
 
@@ -1327,7 +1387,7 @@
       : '';
     const subRow = `
       <tr class="row-expanded">
-        <td colspan="13">
+        <td colspan="11">
           <div class="row-expanded-inner">
             <div class="row-error-msg">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;margin-top:1px">
@@ -1343,28 +1403,37 @@
     return mainRow + subRow;
   }
 
+  function sortIndicator(key) {
+    if (rowSort.key !== key) return '<span class="sort-ind">↕</span>';
+    return `<span class="sort-ind active">${rowSort.dir === 'asc' ? '↑' : '↓'}</span>`;
+  }
+
+  function th(key, label) {
+    if (!key) return `<th>${label}</th>`;
+    return `<th class="sortable" onclick="sortRows('${key}')">${label} ${sortIndicator(key)}</th>`;
+  }
+
   function renderRowsView(stats) {
+    const ordered = sortStatsForRows(stats);
     return `
       <table class="rows-table">
         <thead>
           <tr>
-            <th>MàJ</th>
-            <th>Tracker</th>
-            <th>Dern. conn.</th>
-            <th>Conn. auto</th>
-            <th>Download</th>
-            <th>Upload</th>
-            <th>Ratio</th>
-            <th>Buffer</th>
-            <th>Seeding</th>
-            <th>Bonus</th>
-            <th>Points</th>
-            <th>Taux</th>
-            <th>Statut</th>
+            ${th('', 'MàJ')}
+            ${th('name', 'Tracker')}
+            ${th('lastconn', 'Dern. conn.')}
+            ${th('', 'Conn. auto')}
+            ${th('download', 'Download')}
+            ${th('upload', 'Upload')}
+            ${th('ratio', 'Ratio')}
+            ${th('buffer', 'Buffer')}
+            ${th('seeding', 'Seeding')}
+            ${th('bonus', 'Bonus')}
+            ${th('status', 'Statut')}
           </tr>
         </thead>
         <tbody>
-          ${stats.map(renderRow).join('')}
+          ${ordered.map(renderRow).join('')}
         </tbody>
       </table>`;
   }
