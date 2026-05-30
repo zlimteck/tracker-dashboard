@@ -136,12 +136,20 @@
       border-bottom: 1px solid var(--border);
     }
     .card-name { font-weight: 600; font-size: 15px; color: var(--text); text-decoration: none; }
-    .card-name:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
+    .card-name:hover { color: var(--blue); text-decoration: underline; text-underline-offset: 3px; }
     .card-header-actions {
       display: flex;
       align-items: center;
       gap: 8px;
     }
+    .card-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 6px 12px 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .card-badges:empty { display: none; }
     .card-refresh {
       min-width: 34px;
       height: 24px;
@@ -886,17 +894,20 @@
       const reachabilityLine = isUnreachable
         ? `<div class="error-reason">${escapeHtml(reachabilityReason)}</div>`
         : '';
+      const badges = `
+        <span class="badge badge-error">Erreur</span>
+        ${offlineBadge}
+        ${ratiolessBadge(stat)}
+      `.trim();
       return `
         <div class="card">
           <div class="card-header">
             ${trackerName(stat)}
             <div class="card-header-actions">
-              ${ratiolessBadge(stat)}
-              ${offlineBadge}
               ${cardRefreshButton(stat)}
-              <span class="badge badge-error">Erreur</span>
             </div>
           </div>
+          <div class="card-badges">${badges}</div>
           <div class="error-body">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
@@ -921,14 +932,13 @@
 
     return `
       <div class="card">
-          <div class="card-header">
-            ${trackerName(stat)}
+        <div class="card-header">
+          ${trackerName(stat)}
           <div class="card-header-actions">
-            ${ratiolessBadge(stat)}
             ${cardRefreshButton(stat)}
-            <span class="badge badge-ok">OK</span>
           </div>
         </div>
+        <div class="card-badges">${ratiolessBadge(stat)}</div>
 
         <div class="stats">
           ${statCell('Download', formatBytes(f.downloadedBytes), '', '')}
@@ -1332,6 +1342,14 @@
 
   // ─── Proxy overrides (par tracker) ─────────────────────────────────────────
 
+  // crypto.randomUUID n'existe qu'en contexte securise (HTTPS / localhost) - fallback simple
+  function genId() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+      return window.genId();
+    }
+    return 'oid-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  }
+
   let proxyOverridesState = []; // mirroir local des overrides en cours d'edition
 
   async function loadProxyOverrides() {
@@ -1345,7 +1363,7 @@
 
   function normalizeOverride(o) {
     return {
-      id:       o.id || crypto.randomUUID(),
+      id:       o.id || genId(),
       label:    o.label || '',
       enabled:  Boolean(o.enabled),
       trackers: Array.isArray(o.trackers) ? o.trackers : [],
@@ -1442,7 +1460,7 @@
 
   function addProxyOverride() {
     proxyOverridesState = collectOverridesFromDom();
-    proxyOverridesState.push(normalizeOverride({ id: crypto.randomUUID(), enabled: false }));
+    proxyOverridesState.push(normalizeOverride({ id: genId(), enabled: false }));
     renderProxyOverrides();
   }
 
