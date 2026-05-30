@@ -313,6 +313,18 @@
     .skel-stat  { background: var(--surface); height: 64px; }
 
     /* ── Proxy panel ─────────────────────────────────────────────────────────── */
+    .proxyspin-promo {
+      font-size: 12px;
+      color: var(--muted);
+      background: color-mix(in srgb, var(--blue) 8%, transparent);
+      border: 1px solid color-mix(in srgb, var(--blue) 25%, transparent);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+      line-height: 1.5;
+    }
+    .proxyspin-promo a { color: var(--blue); font-weight: 600; text-decoration: none; }
+    .proxyspin-promo a:hover { text-decoration: underline; }
     #proxy-toggle, #theme-toggle, #presentation-toggle, #logout-btn {
       background: none;
       border: 1px solid var(--border);
@@ -633,7 +645,7 @@
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
       </svg>
-      Proxy
+      Proxies
     </button>
     <button id="theme-toggle" onclick="toggleTheme()">Jour</button>
     <button id="presentation-toggle" onclick="togglePresentationMode()" title="Afficher toutes les cartes avec des données factices">
@@ -706,6 +718,12 @@
     <p style="font-size:12px; color:var(--muted); margin-bottom:12px">
       Surcharge le proxy global pour les trackers cochés. Un tracker ne peut être couvert que par un seul proxy actif à la fois.
     </p>
+    <div class="proxyspin-promo">
+      Besoin d'un proxy rotatif auto-hébergé pour les sites qui bannissent une IP fixe ?
+      Jette un œil à
+      <a href="https://github.com/Aerya/ProxySpin" target="_blank" rel="noreferrer noopener">ProxySpin</a>
+      — un rotateur de proxies en Docker, idéal à brancher ici en proxy par tracker.
+    </div>
     <div id="proxy-overrides-list"></div>
     <div class="proxy-actions" style="margin-top:12px">
       <button class="btn-test" onclick="addProxyOverride()">+ Ajouter un proxy</button>
