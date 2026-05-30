@@ -506,27 +506,51 @@ function blockedStats(trackers: TrackerConfig[]): TrackerStats[] {
     }));
 }
 
+// Compteur de OK consecutifs par tracker (en memoire) pour l'auto-lever d'incident.
+// Reset au redemarrage = conservateur (on garde l'incident plus longtemps), ce qui est voulu.
+const incidentOkStreaks = new Map<string, number>();
+const INCIDENT_AUTO_CLEAR_AFTER = 2; // nb de fetchs OK consecutifs avant auto-lever
+
 /**
- * Annote la stat avec l'incident manuel s'il y en a un, ET clear automatiquement
- * l'incident si le fetch est passe en OK (le tracker s'est repare).
+ * Effet de bord : gere le compteur de OK consecutifs et leve l'incident apres
+ * INCIDENT_AUTO_CLEAR_AFTER fetchs OK d'affilee. Toute erreur remet le compteur a zero.
+ * A appeler EXACTEMENT UNE FOIS par tracker et par cycle de refresh (sinon le compteur
+ * monte trop vite et leve un incident sur un seul vrai OK).
  */
-function annotateWithIncident(stat: TrackerStats): TrackerStats {
-  if (stat.status === 'ok') {
-    // Auto-clear : si on a un incident enregistre, on le supprime
-    const existing = getIncident(stat.id);
-    if (existing) {
-      clearIncident(stat.id);
-      console.log(`[Incident] ${stat.name} : fetch OK -> incident leve automatiquement`);
-    }
-    return stat;
+function processIncidentStreak(stat: TrackerStats): void {
+  const incident = getIncident(stat.id);
+  if (!incident) {
+    incidentOkStreaks.delete(stat.id);
+    return;
   }
+  if (stat.status === 'ok') {
+    const streak = (incidentOkStreaks.get(stat.id) ?? 0) + 1;
+    if (streak >= INCIDENT_AUTO_CLEAR_AFTER) {
+      clearIncident(stat.id);
+      incidentOkStreaks.delete(stat.id);
+      console.log(`[Incident] ${stat.name} : ${INCIDENT_AUTO_CLEAR_AFTER} OK consecutifs -> incident leve automatiquement`);
+    } else {
+      incidentOkStreaks.set(stat.id, streak);
+    }
+  } else {
+    // Une erreur casse la serie : on repart de zero
+    incidentOkStreaks.delete(stat.id);
+  }
+}
+
+/**
+ * Pur (aucun effet de bord) : attache l'incident a la stat pour l'affichage.
+ * Sur une stat OK, on n'attache rien (la carte verte n'affiche pas de badge incident).
+ */
+function attachIncident(stat: TrackerStats): TrackerStats {
+  if (stat.status === 'ok') return stat;
   const incident = getIncident(stat.id);
   if (!incident) return stat;
   return { ...stat, incident: { acknowledged: incident.acknowledged, note: incident.note } };
 }
 
 function upsertCachedStat(stat: TrackerStats): void {
-  const annotated = annotateWithIncident(stat);
+  const annotated = attachIncident(stat);
   cachedStats = [
     ...cachedStats.filter(existing => existing.id !== annotated.id),
     annotated,
@@ -655,11 +679,12 @@ async function refresh(trackers: TrackerConfig[]): Promise<void> {
       }
 
       const stat = await fetchTracker(tracker, creds);
+      processIncidentStreak(stat); // une fois par tracker par cycle
       upsertCachedStat(stat);
       logStatResult(stat);
       return stat;
     }));
-    cachedStats = results.map(annotateWithIncident);
+    cachedStats = results.map(attachIncident);
     lastRefresh = new Date().toISOString();
     saveStatSnapshots(cachedStats);
     const ok  = cachedStats.filter(s => s.status === 'ok').length;
@@ -705,6 +730,7 @@ async function refreshOneTracker(
   }
 
   const stat = await fetchTracker(tracker, creds);
+  processIncidentStreak(stat); // une fois par tracker par cycle
   upsertCachedStat(stat);
   logStatResult(stat);
   saveStatSnapshots([stat]);
@@ -1289,6 +1315,8 @@ export async function start(): Promise<void> {
     const acknowledged = Boolean(req.body?.acknowledged);
     const note = typeof req.body?.note === 'string' ? req.body.note : '';
     const incident = setIncident(trackerId, acknowledged, note);
+    // Nouvel incident marque -> on repart d'un compteur de OK vierge (2 OK requis)
+    incidentOkStreaks.delete(trackerId);
     // Re-annoter le cache pour que /api/stats reflete immediatement le changement
     const cached = cachedStats.find(s => s.id === trackerId);
     if (cached) upsertCachedStat({ ...cached, incident: undefined });
@@ -1297,6 +1325,7 @@ export async function start(): Promise<void> {
 
   app.delete('/api/incidents/:trackerId', (req, res) => {
     clearIncident(req.params.trackerId);
+    incidentOkStreaks.delete(req.params.trackerId);
     const cached = cachedStats.find(s => s.id === req.params.trackerId);
     if (cached) upsertCachedStat({ ...cached, incident: undefined });
     res.json({ ok: true });
