@@ -436,12 +436,19 @@ async function doLogin(
 
 // ─── Ping (reachability) ──────────────────────────────────────────────────────
 
+type SiteReachability = NonNullable<TrackerStats['siteReachability']>;
+
 /**
  * Ping rapide via HEAD (fallback GET) sur baseUrl pour distinguer
- * "site HS" d'une erreur d'auth/config. Toute reponse HTTP (meme 4xx/5xx)
- * = site joignable. Echec reseau / TLS / proxy / timeout = injoignable.
+ * "site joignable" d'une erreur reseau / proxy / serveur.
+ *
+ * Joignable : reponse HTTP 1xx/2xx/3xx ou 4xx hors 403/451.
+ * Non joignable :
+ *  - 'network'       : echec reseau / TLS / proxy / DNS / timeout
+ *  - 'http_5xx'      : reponse >= 500 (panne serveur / blocage Cloudflare)
+ *  - 'http_forbidden': 403 ou 451 (acces refuse - IP bannie ou geo-block)
  */
-export async function pingTracker(tracker: TrackerConfig): Promise<boolean> {
+export async function pingTracker(tracker: TrackerConfig): Promise<SiteReachability> {
   const url = tracker.baseUrl;
   const config = {
     timeout: 10_000,
@@ -453,16 +460,34 @@ export async function pingTracker(tracker: TrackerConfig): Promise<boolean> {
       'Accept': 'text/html,*/*;q=0.8',
     },
   };
+
+  const classify = (status: number): SiteReachability => {
+    if (status === 403 || status === 451) return { reachable: false, reason: 'http_forbidden', statusCode: status };
+    if (status >= 500) return { reachable: false, reason: 'http_5xx', statusCode: status };
+    return { reachable: true, statusCode: status };
+  };
+
+  let headStatus: number | null = null;
   try {
-    await axios.head(url, config);
-    return true;
+    const res = await axios.head(url, config);
+    headStatus = res.status;
+    const classified = classify(res.status);
+    // Si HEAD est OK (joignable ou interdit explicitement), on tranche directement.
+    // Pour un 5xx, on retente en GET car certains serveurs renvoient 5xx sur HEAD mais 200 sur GET.
+    if (classified.reachable || classified.reason !== 'http_5xx') return classified;
   } catch {
-    try {
-      await axios.get(url, { ...config, responseType: 'text' });
-      return true;
-    } catch {
-      return false;
+    // Echec reseau sur HEAD - on tente GET avant de declarer 'network'
+  }
+
+  try {
+    const res = await axios.get(url, { ...config, responseType: 'text' });
+    return classify(res.status);
+  } catch {
+    // GET a echoue aussi : si HEAD avait renvoye un 5xx, on garde cette info
+    if (headStatus !== null && headStatus >= 500) {
+      return { reachable: false, reason: 'http_5xx', statusCode: headStatus };
     }
+    return { reachable: false, reason: 'network' };
   }
 }
 
@@ -621,14 +646,14 @@ export async function fetchTracker(
     return await attempt();
   } catch (err: unknown) {
     invalidateSession(tracker.id); // reset pour le prochain cycle
-    const siteReachable = await pingTracker(tracker).catch(() => false);
+    const siteReachability = await pingTracker(tracker).catch((): SiteReachability => ({ reachable: false, reason: 'network' }));
     return {
       id:          tracker.id,
       name:        tracker.name,
       trackerUrl:  tracker.baseUrl,
       status:      'error',
       error:       friendlyError(err),
-      siteReachable,
+      siteReachability,
       lastUpdated: new Date().toISOString(),
       byteUnit:    tracker.dashboard?.byteUnit ?? 'binary',
       fields:      {},

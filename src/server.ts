@@ -811,7 +811,7 @@ function renderPrometheusMetrics(stats: TrackerStats[]): string {
     { name: 'tracker_rate_per_day',   help: 'Points earned per day (ratioless)', type: 'gauge', pick: s => toNumber(s.fields.rate) },
     { name: 'tracker_tokens',         help: 'Freeleech tokens', type: 'gauge', pick: s => toNumber(s.fields.tokens) },
     { name: 'tracker_up',             help: '1 if last fetch succeeded, 0 if error', type: 'gauge', pick: s => s.status === 'ok' ? 1 : 0 },
-    { name: 'tracker_site_reachable', help: '1 if last ping succeeded, 0 if failed, absent if not measured', type: 'gauge', pick: s => typeof s.siteReachable === 'boolean' ? (s.siteReachable ? 1 : 0) : null },
+    { name: 'tracker_site_reachable', help: '1 if last ping succeeded, 0 if failed, absent if not measured', type: 'gauge', pick: s => s.siteReachability ? (s.siteReachability.reachable ? 1 : 0) : null },
     { name: 'tracker_last_update_timestamp_seconds', help: 'Unix timestamp of last refresh', type: 'gauge', pick: s => {
         const t = Date.parse(s.lastUpdated);
         return Number.isFinite(t) ? Math.floor(t / 1000) : null;

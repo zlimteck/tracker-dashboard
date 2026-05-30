@@ -73,8 +73,17 @@ export interface TrackerStats {
   trackerUrl?: string;
   status: 'ok' | 'error';
   error?: string;
-  /** Resultat d'un ping HTTP sur baseUrl — false = site injoignable (DNS/TCP/TLS/proxy KO) */
-  siteReachable?: boolean;
+  /** Resultat d'un ping HTTP sur baseUrl avec motif si injoignable */
+  siteReachability?: {
+    reachable: boolean;
+    /**
+     * - 'network'       : echec reseau / TLS / proxy / DNS / timeout
+     * - 'http_5xx'      : serveur a repondu mais avec un 5xx (souvent IP bannie ou panne)
+     * - 'http_forbidden': 403 / 451 (acces refuse - IP bloquee, geo-block, etc.)
+     */
+    reason?: 'network' | 'http_5xx' | 'http_forbidden';
+    statusCode?: number;
+  };
   lastUpdated: string;
   lastLoginAt?: string;
   byteUnit: 'binary' | 'decimal';

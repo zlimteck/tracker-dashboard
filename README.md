@@ -25,6 +25,9 @@ Export Prometheus + dashboard Grafana — endpoint `/metrics` (protégé par tok
 
 ## Changements récents
 
+- Ajout de proxy secondaire, par site
+- Fix Nom de site cliquable sur les cartes
+- Badge "Site injoignable" + motif
 - Fix ratio C411
 - Ajout TorrentLeech (PR)
 - Check de joignabilité en cazs d'erreur de login
