@@ -1,4 +1,4 @@
-FROM node:22.22.3-bookworm-slim AS builder
+FROM node:22-bookworm-slim AS builder
 
 WORKDIR /app
 COPY package*.json tsconfig.json ./
@@ -7,7 +7,7 @@ COPY src/ ./src/
 RUN npm run build
 
 # ── Image finale (sans devDependencies ni sources TS) ──────────────────────
-FROM node:22.22.3-bookworm-slim
+FROM node:22-bookworm-slim
 
 WORKDIR /app
 COPY package*.json ./
