@@ -47,8 +47,8 @@ Le dashboard utilise une variable `$tracker` (multi-select) — par defaut tous 
 
 | Metrique | Type | Description |
 |---|---|---|
-| `tracker_uploaded_bytes` | gauge | Octets envoyes |
-| `tracker_downloaded_bytes` | gauge | Octets telecharges |
+| `tracker_uploaded_bytes_total` | counter | Octets envoyes (cumulatif) |
+| `tracker_downloaded_bytes_total` | counter | Octets telecharges (cumulatif) |
 | `tracker_ratio` | gauge | Ratio (scrape ou calcule up/down) |
 | `tracker_buffer_bytes` | gauge | Buffer (scrape ou up - down) |
 | `tracker_seed_bonus` | gauge | Bonus |

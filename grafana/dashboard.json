@@ -44,14 +44,14 @@
         },
         {
           "refId": "B",
-          "expr": "tracker_uploaded_bytes",
+          "expr": "tracker_uploaded_bytes_total",
           "instant": true,
           "format": "table",
           "legendFormat": "Upload"
         },
         {
           "refId": "C",
-          "expr": "tracker_downloaded_bytes",
+          "expr": "tracker_downloaded_bytes_total",
           "instant": true,
           "format": "table",
           "legendFormat": "Download"
@@ -213,12 +213,12 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "tracker_uploaded_bytes{tracker=\"$tracker\"}",
+          "expr": "tracker_uploaded_bytes_total{tracker=\"$tracker\"}",
           "legendFormat": "upload"
         },
         {
           "refId": "B",
-          "expr": "tracker_downloaded_bytes{tracker=\"$tracker\"}",
+          "expr": "tracker_downloaded_bytes_total{tracker=\"$tracker\"}",
           "legendFormat": "download"
         }
       ],
@@ -324,7 +324,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "increase(tracker_downloaded_bytes{tracker=~\"$tracker\"}[1d])",
+          "expr": "increase(tracker_downloaded_bytes_total{tracker=~\"$tracker\"}[1d])",
           "legendFormat": "{{tracker}}"
         }
       ],
@@ -348,7 +348,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "increase(tracker_uploaded_bytes{tracker=~\"$tracker\"}[1d])",
+          "expr": "increase(tracker_uploaded_bytes_total{tracker=~\"$tracker\"}[1d])",
           "legendFormat": "{{tracker}}"
         }
       ],
@@ -375,7 +375,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "increase(tracker_uploaded_bytes{tracker=\"$tracker\"}[1d]) / clamp_min(increase(tracker_downloaded_bytes{tracker=\"$tracker\"}[1d]), 1)",
+          "expr": "increase(tracker_uploaded_bytes_total{tracker=\"$tracker\"}[1d]) / clamp_min(increase(tracker_downloaded_bytes_total{tracker=\"$tracker\"}[1d]), 1)",
           "legendFormat": "{{tracker}}",
           "instant": true
         }
@@ -411,7 +411,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "increase(tracker_seed_bonus{tracker=~\"$tracker\"}[6h])",
+          "expr": "delta(tracker_seed_bonus{tracker=~\"$tracker\"}[6h])",
           "legendFormat": "{{tracker}}"
         }
       ],
@@ -552,6 +552,38 @@
         "graphMode": "none",
         "reduceOptions": { "calcs": ["lastNotNull"] }
       }
+    },
+    {
+      "type": "row",
+      "title": "Buffer",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 83 },
+      "id": 107,
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Buffer (upload - download)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 84 },
+      "id": 15,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "tracker_buffer_bytes{tracker=~\"$tracker\"}",
+          "legendFormat": "{{tracker}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "lineWidth": 2, "fillOpacity": 10, "showPoints": "never" }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["last"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
     }
   ],
   "refresh": "1m",
@@ -575,7 +607,7 @@
       {
         "current": { "selected": true, "text": ["All"], "value": ["$__all"] },
         "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-        "definition": "label_values(tracker_uploaded_bytes, tracker)",
+        "definition": "label_values(tracker_uploaded_bytes_total, tracker)",
         "hide": 0,
         "includeAll": true,
         "label": "Tracker",
@@ -583,7 +615,7 @@
         "name": "tracker",
         "options": [],
         "query": {
-          "query": "label_values(tracker_uploaded_bytes, tracker)",
+          "query": "label_values(tracker_uploaded_bytes_total, tracker)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,

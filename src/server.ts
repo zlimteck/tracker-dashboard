@@ -836,8 +836,8 @@ function toNumber(value: unknown): number | null {
 
 function renderPrometheusMetrics(stats: TrackerStats[]): string {
   const definitions: Array<{ name: string; help: string; type: 'gauge' | 'counter'; pick: (s: TrackerStats) => number | null }> = [
-    { name: 'tracker_uploaded_bytes',   help: 'Total uploaded bytes', type: 'gauge', pick: s => toNumber(s.fields.uploadedBytes) },
-    { name: 'tracker_downloaded_bytes', help: 'Total downloaded bytes', type: 'gauge', pick: s => toNumber(s.fields.downloadedBytes) },
+    { name: 'tracker_uploaded_bytes_total',   help: 'Cumulative uploaded bytes', type: 'counter', pick: s => toNumber(s.fields.uploadedBytes) },
+    { name: 'tracker_downloaded_bytes_total', help: 'Cumulative downloaded bytes', type: 'counter', pick: s => toNumber(s.fields.downloadedBytes) },
     { name: 'tracker_ratio',            help: 'Ratio (scraped or computed up/down)', type: 'gauge', pick: s => {
         const r = toNumber(s.fields.ratio);
         if (r !== null) return r;
