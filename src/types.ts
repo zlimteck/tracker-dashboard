@@ -88,4 +88,6 @@ export interface TrackerStats {
   lastLoginAt?: string;
   byteUnit: 'binary' | 'decimal';
   fields: Record<string, string | number>;
+  /** Incident "connu" manuellement signale par l'utilisateur (auto-clear sur status=ok) */
+  incident?: { acknowledged: boolean; note: string };
 }

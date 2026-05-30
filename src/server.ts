@@ -11,6 +11,9 @@ import {
 } from './proxy.js';
 import crypto from 'crypto';
 import {
+  loadIncidents, setIncident, getIncident, clearIncident,
+} from './incidents.js';
+import {
   ensureTrackerSchedules,
   deleteTrackerCredentials,
   getTrackerCredentials,
@@ -503,10 +506,30 @@ function blockedStats(trackers: TrackerConfig[]): TrackerStats[] {
     }));
 }
 
+/**
+ * Annote la stat avec l'incident manuel s'il y en a un, ET clear automatiquement
+ * l'incident si le fetch est passe en OK (le tracker s'est repare).
+ */
+function annotateWithIncident(stat: TrackerStats): TrackerStats {
+  if (stat.status === 'ok') {
+    // Auto-clear : si on a un incident enregistre, on le supprime
+    const existing = getIncident(stat.id);
+    if (existing) {
+      clearIncident(stat.id);
+      console.log(`[Incident] ${stat.name} : fetch OK -> incident leve automatiquement`);
+    }
+    return stat;
+  }
+  const incident = getIncident(stat.id);
+  if (!incident) return stat;
+  return { ...stat, incident: { acknowledged: incident.acknowledged, note: incident.note } };
+}
+
 function upsertCachedStat(stat: TrackerStats): void {
+  const annotated = annotateWithIncident(stat);
   cachedStats = [
-    ...cachedStats.filter(existing => existing.id !== stat.id),
-    stat,
+    ...cachedStats.filter(existing => existing.id !== annotated.id),
+    annotated,
   ];
   lastRefresh = new Date().toISOString();
 }
@@ -636,7 +659,7 @@ async function refresh(trackers: TrackerConfig[]): Promise<void> {
       logStatResult(stat);
       return stat;
     }));
-    cachedStats = results;
+    cachedStats = results.map(annotateWithIncident);
     lastRefresh = new Date().toISOString();
     saveStatSnapshots(cachedStats);
     const ok  = cachedStats.filter(s => s.status === 'ok').length;
@@ -1250,6 +1273,33 @@ export async function start(): Promise<void> {
       console.error('[Proxy] Sauvegarde overrides KO :', error);
       res.status(500).json({ ok: false, error });
     }
+  });
+
+  // ── Incidents trackers (flag manuel) ──────────────────────────────────────
+  app.get('/api/incidents', (_req, res) => {
+    res.json({ ok: true, incidents: loadIncidents() });
+  });
+
+  app.post('/api/incidents/:trackerId', (req, res) => {
+    const trackerId = req.params.trackerId;
+    const validIds = new Set(normalizeTrackerConfigs().map(t => t.id));
+    if (!validIds.has(trackerId)) {
+      return res.status(404).json({ ok: false, error: 'Tracker inconnu' });
+    }
+    const acknowledged = Boolean(req.body?.acknowledged);
+    const note = typeof req.body?.note === 'string' ? req.body.note : '';
+    const incident = setIncident(trackerId, acknowledged, note);
+    // Re-annoter le cache pour que /api/stats reflete immediatement le changement
+    const cached = cachedStats.find(s => s.id === trackerId);
+    if (cached) upsertCachedStat({ ...cached, incident: undefined });
+    res.json({ ok: true, incident });
+  });
+
+  app.delete('/api/incidents/:trackerId', (req, res) => {
+    clearIncident(req.params.trackerId);
+    const cached = cachedStats.find(s => s.id === req.params.trackerId);
+    if (cached) upsertCachedStat({ ...cached, incident: undefined });
+    res.json({ ok: true });
   });
 
   app.post('/api/proxy/test', async (req, res) => {

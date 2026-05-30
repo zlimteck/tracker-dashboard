@@ -182,6 +182,33 @@
       background: color-mix(in srgb, var(--yellow) 10%, transparent); color: var(--yellow); }
     .badge-loading { background: color-mix(in srgb, var(--blue) 14%, transparent); color: var(--blue); }
     .badge-ratioless { background: color-mix(in srgb, var(--purple) 16%, transparent); color: var(--purple); }
+    .badge-incident { background: color-mix(in srgb, var(--muted) 18%, transparent); color: var(--muted); }
+    .incident-box {
+      margin: 8px 18px 12px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      background: color-mix(in srgb, var(--muted) 8%, transparent);
+      border-left: 3px solid var(--muted);
+      font-size: 12px;
+      color: var(--text);
+    }
+    .incident-box textarea {
+      width: 100%;
+      margin-top: 6px;
+      min-height: 44px;
+      resize: vertical;
+      font: inherit;
+      box-sizing: border-box;
+    }
+    .incident-box .incident-actions {
+      display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; align-items: center;
+    }
+    .incident-box button {
+      background: transparent; border: 1px solid var(--border);
+      padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; color: var(--text);
+    }
+    .incident-box button:hover { border-color: var(--blue); color: var(--blue); }
+    .incident-box .incident-status { font-size: 11px; color: var(--muted); }
 
     /* Stats grid */
     .stats {
@@ -821,6 +848,50 @@
       : '';
   }
 
+  function renderIncidentBox(stat) {
+    const incident = stat.incident || { acknowledged: false, note: '' };
+    const isAck = incident.acknowledged === true;
+    const noteId = `incident-note-${stat.id}`;
+    const noteValue = escapeHtml(incident.note || '');
+    const statusText = isAck
+      ? 'Incident actif — refresh continue, sera leve automatiquement quand le tracker repond OK.'
+      : 'Si le souci vient du tracker (pas de tes credentials), marque-le pour basculer le badge en neutre.';
+    const toggleLabel = isAck ? "Lever l'incident" : 'Marquer comme incident connu';
+    return `
+      <div class="incident-box">
+        <div class="incident-status">${statusText}</div>
+        <textarea id="${noteId}" placeholder="Note libre (optionnel) — ex: login HS cote tracker depuis le 28/05">${noteValue}</textarea>
+        <div class="incident-actions">
+          <button onclick="toggleIncident('${escapeHtml(stat.id)}', ${!isAck})">${toggleLabel}</button>
+          <button onclick="saveIncidentNote('${escapeHtml(stat.id)}', ${isAck})">Enregistrer la note</button>
+        </div>
+      </div>
+    `;
+  }
+
+  async function postIncident(trackerId, acknowledged, note) {
+    const r = await fetch(`/api/incidents/${encodeURIComponent(trackerId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ acknowledged, note }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'Erreur incident');
+    await loadStats();
+  }
+
+  async function toggleIncident(trackerId, acknowledged) {
+    const note = document.getElementById(`incident-note-${trackerId}`)?.value ?? '';
+    try { await postIncident(trackerId, acknowledged, note); }
+    catch(e) { console.warn('toggleIncident:', e.message); }
+  }
+
+  async function saveIncidentNote(trackerId, acknowledged) {
+    const note = document.getElementById(`incident-note-${trackerId}`)?.value ?? '';
+    try { await postIncident(trackerId, acknowledged, note); }
+    catch(e) { console.warn('saveIncidentNote:', e.message); }
+  }
+
   function formatReachabilityReason(reach) {
     if (!reach) return '';
     const code = reach.statusCode ? ` (${reach.statusCode})` : '';
@@ -894,11 +965,16 @@
       const reachabilityLine = isUnreachable
         ? `<div class="error-reason">${escapeHtml(reachabilityReason)}</div>`
         : '';
+      const isIncident = stat.incident && stat.incident.acknowledged === true;
+      const errorOrIncidentBadge = isIncident
+        ? '<span class="badge badge-incident" title="Probleme connu signale manuellement">Incident connu</span>'
+        : '<span class="badge badge-error">Erreur</span>';
       const badges = `
-        <span class="badge badge-error">Erreur</span>
+        ${errorOrIncidentBadge}
         ${offlineBadge}
         ${ratiolessBadge(stat)}
       `.trim();
+      const incidentBox = renderIncidentBox(stat);
       return `
         <div class="card">
           <div class="card-header">
@@ -915,6 +991,7 @@
             ${stat.error ?? 'Erreur inconnue'}
           </div>
           ${reachabilityLine}
+          ${incidentBox}
           ${scheduleControls(stat)}
           <div class="card-footer">Derniere connexion : ${lastLoginText(stat)}</div>
         </div>`;
