@@ -654,12 +654,36 @@
       display: flex;
       flex-wrap: wrap;
       gap: 12px;
-      align-items: flex-end;
+      align-items: flex-start;
       margin-top: 8px;
       padding: 10px;
       border: 1px solid var(--border);
       border-radius: 8px;
       background: color-mix(in srgb, var(--muted) 6%, transparent);
+    }
+    .advanced-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 0;
+    }
+    .advanced-field label {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.25;
+      white-space: normal;
+    }
+    .advanced-cookie-field { flex: 1 1 760px; }
+    .advanced-cookie-row {
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+      min-width: 0;
+    }
+    .advanced-cookie-row textarea { min-width: 0; }
+    .advanced-profile-field {
+      flex: 0 0 auto;
+      min-width: 150px;
     }
     .definition-actions {
       display: flex;
@@ -1643,16 +1667,16 @@
                 <details class="definition-advanced" style="grid-column:1/-1">
                   <summary>Options avancées${credential.hasCookie ? ' · <b style="color:var(--green)">cookie défini</b>' : ''}</summary>
                   <div class="definition-advanced-body">
-                    <div class="tracker-field" style="flex:1; min-width:260px">
+                    <div class="advanced-field advanced-cookie-field">
                       <label>Cookie de session <span style="color:var(--muted)">— sites à CAPTCHA / Cloudflare Turnstile${credential.hasCookie ? ' · <b style="color:var(--green)">défini</b>' : ''}</span></label>
-                      <div style="display:flex; gap:8px; align-items:flex-start">
+                      <div class="advanced-cookie-row">
                         <textarea class="tracker-input" id="credential-cookie-${safeId}" autocomplete="off" rows="3" spellcheck="false" style="flex:1; resize:vertical; font-family:monospace; font-size:11px; white-space:pre"
                           placeholder="${credential.hasCookie ? '•••••••• (enregistré — colle pour remplacer, vide pour effacer)' : 'Colle ici un fichier cookies.txt (Netscape), un export JSON Cookie-Editor, ou nom=valeur; nom2=valeur2'}"
                           title="Connecte-toi au site dans ton navigateur, exporte les cookies (extension cookies-txt / Cookie-Editor) ou copie-les depuis les DevTools (F12 → Application/Stockage → Cookies). Le dashboard les injecte dans le navigateur headless et saute le login + Turnstile."></textarea>
                         <button class="btn-save" style="padding:6px 10px" onclick="saveTrackerCookie('${safeId}', this)">Enregistrer cookie</button>
                       </div>
                     </div>
-                    <div class="tracker-field">
+                    <div class="advanced-field advanced-profile-field">
                       <label>Profil navigateur</label>
                       <button class="btn-test" style="padding:6px 10px" title="Efface le profil navigateur (cookies/session) de ce tracker. Utile si le login reste bloqué sur 'non authentifié' après un changement de mot de passe, une session expirée ou un challenge Cloudflare. Le prochain rafraîchissement repartira d'une session vierge." onclick="resetTrackerProfile('${safeId}', this)">Reset profil</button>
                     </div>
