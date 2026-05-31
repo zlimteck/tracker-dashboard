@@ -1154,18 +1154,20 @@ export async function start(): Promise<void> {
   });
 
   // ── Prometheus /metrics (token, hors session) ──────────────────────────────
-  app.get('/metrics', (req, res) => {
+  app.get(['/metrics', '/metrics/'], (req, res) => {
     const token = process.env.METRICS_TOKEN;
-    if (!token) {
+    const publicMetrics = String(process.env.METRICS_PUBLIC ?? '').toLowerCase() === 'true';
+    if (!token && !publicMetrics) {
       res.status(503).type('text/plain').send('METRICS_TOKEN env var not set on the server');
       return;
     }
     const auth = req.headers.authorization;
-    if (auth !== `Bearer ${token}`) {
+    if (!publicMetrics && auth !== `Bearer ${token}`) {
       res.status(401).type('text/plain').send('Unauthorized');
       return;
     }
-    res.type('text/plain; version=0.0.4; charset=utf-8').send(renderPrometheusMetrics(cachedStats));
+    res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+    res.send(renderPrometheusMetrics(cachedStats));
   });
 
   app.use((req, res, next) => {
