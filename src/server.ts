@@ -381,6 +381,15 @@ function normalizeTrackerConfigs(): TrackerConfig[] {
       ];
       changed = true;
     }
+    if (tracker.id === 'hdonly') {
+      tracker.login.body = {
+        username: '{{username}}',
+        password: '{{password}}',
+        keeplogged: '1',
+        login: 'Se connecter',
+      };
+      changed = true;
+    }
     if (isUnit3dTracker) {
       tracker.login.preStep = {
         ...(tracker.login.preStep ?? { url: 'login', extract: {} }),

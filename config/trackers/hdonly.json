@@ -11,7 +11,8 @@
     "body": {
       "username":   "{{username}}",
       "password":   "{{password}}",
-      "keeplogged": "1"
+      "keeplogged": "1",
+      "login":      "Se connecter"
     },
     "failurePatterns": [
       "Identifiant ou mot de passe incorrect",
