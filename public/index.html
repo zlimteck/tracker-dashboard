@@ -615,7 +615,7 @@
     }
     .definition-row {
       display: grid;
-      grid-template-columns: 260px 90px 110px 120px minmax(220px, 1fr) minmax(220px, 1fr) 96px 112px 86px;
+      grid-template-columns: 260px 72px 90px 108px minmax(260px, 1fr) minmax(220px, 1fr) 98px 112px 86px;
       align-items: center;
       column-gap: 10px;
       min-width: 1420px;
@@ -705,6 +705,10 @@
     .definition-badge-muted {
       color: var(--muted);
       background: color-mix(in srgb, var(--border) 60%, transparent);
+    }
+    .definition-new-slot {
+      display: block;
+      min-width: 0;
     }
     .tracker-field {
       display: grid;
@@ -1642,7 +1646,7 @@
                   <strong>${trackerLogo(definition.id)}${escapeHtml(definition.name)}</strong>
                   <small>${escapeHtml(definition.file)} · <a href="${escapeHtml(definition.baseUrl)}" target="_blank" rel="noreferrer noopener">${escapeHtml(definition.baseUrl)}</a></small>
                 </div>
-                ${isNew ? '<span class="definition-badge">Nouveau</span>' : ''}
+                ${isNew ? '<span class="definition-badge">Nouveau</span>' : '<span class="definition-new-slot"></span>'}
                 <span class="definition-badge ${isEnabled ? '' : 'definition-badge-muted'}">${isEnabled ? 'Actif' : 'Disponible'}</span>
                 <span class="credential-badge ${credential.hasPassword ? 'credential-ok' : 'credential-missing'}">
                   ${credential.hasPassword ? 'Configuré' : 'Manquant'}
