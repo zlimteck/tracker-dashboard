@@ -25,6 +25,7 @@ Export Prometheus + dashboard Grafana — endpoint `/metrics` (protégé par tok
 
 ## Changements récents
 
+- Ajout automatique de logos
 - Ajout vue Liste en sus de Cartes
 - Ajout "Incident connu" + note libre sur les cartes. Inspiré par LaCale vu le site en ligne mais login HS depuis le 19 mai 2026
 - Ajout de proxy secondaire, par site

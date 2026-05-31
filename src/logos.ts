@@ -13,9 +13,14 @@ interface LogoTarget {
   baseUrl: string;
 }
 
-// Deux dossiers : manuel (prioritaire, fourni par l'utilisateur) et auto (favicons recuperes)
+// Trois sources, par priorite :
+//  1. LOGO_DIR    : logos manuels deposes par l'utilisateur (config/logos) — prioritaires
+//  2. AUTO_DIR    : favicons recuperes automatiquement (config/logos/auto)
+//  3. SHIPPED_DIR : logos livres avec le code (public/logos) — pour les sites dont le
+//                   favicon n'est pas recuperable (Cloudflare/SPA sans <link icon>)
 const LOGO_DIR = path.join(process.cwd(), 'config', 'logos');
 const AUTO_DIR = path.join(LOGO_DIR, 'auto');
+const SHIPPED_DIR = path.join(process.cwd(), 'public', 'logos');
 
 const EXTS = ['svg', 'png', 'ico', 'jpg', 'jpeg', 'gif', 'webp'] as const;
 
@@ -38,9 +43,9 @@ function findExisting(dir: string, id: string): string | null {
   return null;
 }
 
-/** Logo manuel prioritaire, sinon favicon recupere automatiquement. */
+/** Manuel (config/logos) > auto (favicon) > livre avec le code (public/logos). */
 export function resolveLogoPath(id: string): string | null {
-  return findExisting(LOGO_DIR, id) ?? findExisting(AUTO_DIR, id);
+  return findExisting(LOGO_DIR, id) ?? findExisting(AUTO_DIR, id) ?? findExisting(SHIPPED_DIR, id);
 }
 
 function looksLikeImage(type: string | undefined, buf: Buffer): boolean {
@@ -139,7 +144,8 @@ export async function fetchTrackerLogo(tracker: LogoTarget, force = false): Prom
     } catch { /* home injoignable : pas de logo auto */ }
   }
 
-  if (!result) return false;
+  // Echec du fetch : pas "manquant" si un logo livre (public/logos) couvre le tracker.
+  if (!result) return resolveLogoPath(tracker.id) !== null;
   writeAuto(tracker.id, result.buf, extFor(result.type, result.url));
   return true;
 }
