@@ -506,12 +506,11 @@ function normalizeTrackerConfigs(): TrackerConfig[] {
         password: '{{password}}',
       };
       tracker.login.failurePatterns = [
-        ...new Set([
-          ...tracker.login.failurePatterns,
-          'password',
-          'connexion',
-          'login',
-        ]),
+        'account-login.php',
+        'type="password"',
+        'type=\'password\'',
+        'name="password"',
+        'name=\'password\'',
       ];
       changed = true;
     }

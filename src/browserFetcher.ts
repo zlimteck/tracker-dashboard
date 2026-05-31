@@ -348,6 +348,21 @@ async function waitForTurnstile(page: Page): Promise<void> {
  * une coquille "non connecte" avant hydratation (cas TR4KER).
  */
 async function waitForTrackerContent(tracker: TrackerConfig, page: Page): Promise<boolean> {
+  if (tracker.id === 'tigersdl') {
+    try {
+      await page.waitForFunction(
+        () => {
+          const text = document.body?.innerText ?? '';
+          return text.includes('Votre solde') || document.title.includes('Tigers : Seedbonus');
+        },
+        null,
+        { timeout: 20_000 },
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }
   if (tracker.id !== 'tr4ker') return false;
   try {
     await page.waitForFunction(
