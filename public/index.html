@@ -1616,10 +1616,10 @@
                   <div class="definition-advanced-body">
                     <div class="tracker-field" style="flex:1; min-width:260px">
                       <label>Cookie de session <span style="color:var(--muted)">— sites à CAPTCHA / Cloudflare Turnstile${credential.hasCookie ? ' · <b style="color:var(--green)">défini</b>' : ''}</span></label>
-                      <div style="display:flex; gap:8px; align-items:center">
-                        <input class="tracker-input" id="credential-cookie-${safeId}" autocomplete="off" style="flex:1"
-                          placeholder="${credential.hasCookie ? '•••••••• (enregistré — colle pour remplacer, vide pour effacer)' : 'nom=valeur; nom2=valeur2   (ou export JSON Cookie-Editor)'}"
-                          title="Connecte-toi au site dans ton navigateur, ouvre les DevTools (F12) → Application/Stockage → Cookies, puis copie soit la chaîne 'nom=valeur; nom2=valeur2', soit l'export JSON d'une extension type Cookie-Editor. Le dashboard l'injecte dans le navigateur headless et saute le login + Turnstile.">
+                      <div style="display:flex; gap:8px; align-items:flex-start">
+                        <textarea class="tracker-input" id="credential-cookie-${safeId}" autocomplete="off" rows="3" spellcheck="false" style="flex:1; resize:vertical; font-family:monospace; font-size:11px; white-space:pre"
+                          placeholder="${credential.hasCookie ? '•••••••• (enregistré — colle pour remplacer, vide pour effacer)' : 'Colle ici un fichier cookies.txt (Netscape), un export JSON Cookie-Editor, ou nom=valeur; nom2=valeur2'}"
+                          title="Connecte-toi au site dans ton navigateur, exporte les cookies (extension cookies-txt / Cookie-Editor) ou copie-les depuis les DevTools (F12 → Application/Stockage → Cookies). Le dashboard les injecte dans le navigateur headless et saute le login + Turnstile."></textarea>
                         <button class="btn-save" style="padding:6px 10px" onclick="saveTrackerCookie('${safeId}', this)">Enregistrer cookie</button>
                       </div>
                     </div>

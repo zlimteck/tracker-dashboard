@@ -105,12 +105,24 @@ function parseCookies(raw: string, baseUrl: string): InjectableCookie[] {
 
 async function injectStoredCookies(tracker: TrackerConfig, context: BrowserContext): Promise<void> {
   const raw = getTrackerCookie(tracker.id);
-  if (!raw) return;
+  if (!raw) {
+    return;
+  }
   const cookies = parseCookies(raw, tracker.baseUrl);
   if (cookies.length === 0) return;
   await context.addCookies(cookies).catch((err: unknown) => {
     console.warn(`[Cookies] ${tracker.id} : injection echouee - ${err instanceof Error ? err.message : err}`);
   });
+}
+
+/**
+ * Applique le cookie stocke a un contexte DEJA ouvert (sans le fermer), pour une
+ * prise en compte immediate apres enregistrement, sans casser un fetch en cours.
+ * Si aucun contexte n'existe, le cookie sera injecte au prochain getContext.
+ */
+export async function applyStoredCookies(tracker: TrackerConfig): Promise<void> {
+  const context = contexts.get(tracker.id);
+  if (context) await injectStoredCookies(tracker, context);
 }
 
 const PROFILE_DIR = path.join(process.cwd(), 'config', 'browser-profile');

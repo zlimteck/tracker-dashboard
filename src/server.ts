@@ -3,7 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import axios from 'axios';
 import { fetchTracker, invalidateAllSessions, invalidateSession } from './fetcher.js';
-import { resetBrowserProfile, closeBrowserSession } from './browserFetcher.js';
+import { resetBrowserProfile, applyStoredCookies } from './browserFetcher.js';
 import { type FieldExtractor, type TrackerConfig, type TrackerStats } from './types.js';
 import {
   loadProxySettings, saveProxySettings, buildProxyConfig, logProxyStatus,
@@ -1357,16 +1357,19 @@ export async function start(): Promise<void> {
   });
 
   // ── Cookie de session manuel (sites a CAPTCHA / Cloudflare Turnstile) ──────
-  app.post('/api/trackers/:trackerId/cookie', (req, res) => {
+  app.post('/api/trackers/:trackerId/cookie', async (req, res) => {
     const id = req.params.trackerId;
     if (!new Set(listTrackerDefinitionFiles().map(t => t.id)).has(id)) {
       return res.status(404).json({ ok: false, error: 'Tracker inconnu' });
     }
     const cookie = typeof req.body?.cookie === 'string' ? req.body.cookie : '';
     setTrackerCookie(id, cookie);
-    // Fermer le contexte en memoire pour que le cookie soit (re)injecte au prochain fetch
-    closeBrowserSession(id).catch(() => {});
-    invalidateSession(id);
+    // Injection a chaud dans le contexte existant (sans le fermer -> pas de
+    // "Target page closed" si un fetch est en cours). Sinon ce sera fait au prochain fetch.
+    const tracker = loadTrackerDefinitionFile(id) ?? normalizeTrackerConfigs().find(t => t.id === id);
+    if (tracker && cookie.trim()) {
+      await applyStoredCookies(tracker).catch(() => {});
+    }
     console.log(`[Cookies] ${id} : cookie de session ${cookie.trim() ? 'enregistre' : 'efface'}`);
     res.json({ ok: true, hasCookie: hasTrackerCookie(id) });
   });
