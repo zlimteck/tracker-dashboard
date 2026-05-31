@@ -4,7 +4,14 @@ import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { getProxyConfig } from './proxy.js';
 import { selectUserAgent } from './userAgent.js';
-import { type TrackerConfig } from './types.js';
+
+// Cible minimale pour la recuperation d'un logo : on n'a besoin que de l'id et de l'URL.
+// (Compatible avec TrackerConfig comme avec les resumes de definitions.)
+interface LogoTarget {
+  id: string;
+  name: string;
+  baseUrl: string;
+}
 
 // Deux dossiers : manuel (prioritaire, fourni par l'utilisateur) et auto (favicons recuperes)
 const LOGO_DIR = path.join(process.cwd(), 'config', 'logos');
@@ -91,10 +98,12 @@ function writeAuto(trackerId: string, buf: Buffer, ext: string): void {
 /**
  * Recupere le favicon d'un tracker via le proxy configure et le met en cache.
  * Ne touche jamais a un logo manuel (config/logos/<id>.*).
- * Renvoie true si un logo (manuel ou recupere) est disponible apres l'appel.
+ * Avec force=false (defaut), on saute si un logo (manuel ou auto) existe deja.
+ * Renvoie true si un logo est disponible apres l'appel.
  */
-export async function fetchTrackerLogo(tracker: TrackerConfig): Promise<boolean> {
-  if (findExisting(LOGO_DIR, tracker.id)) return true; // logo manuel : on ne touche pas
+export async function fetchTrackerLogo(tracker: LogoTarget, force = false): Promise<boolean> {
+  if (findExisting(LOGO_DIR, tracker.id)) return true;                  // logo manuel : on ne touche pas
+  if (!force && findExisting(AUTO_DIR, tracker.id)) return true;        // deja en cache : on saute
 
   const base = tracker.baseUrl.replace(/\/+$/, '');
 
@@ -135,20 +144,23 @@ export async function fetchTrackerLogo(tracker: TrackerConfig): Promise<boolean>
   return true;
 }
 
-export async function refreshAllLogos(trackers: TrackerConfig[]): Promise<Array<{ id: string; name: string; ok: boolean }>> {
+export async function refreshAllLogos(
+  trackers: LogoTarget[],
+  force = false,
+): Promise<Array<{ id: string; name: string; ok: boolean }>> {
   const out: Array<{ id: string; name: string; ok: boolean }> = [];
+  // Toutes les definitions du dossier trackers, qu'elles soient actives ou non.
   for (const tracker of trackers) {
-    if (tracker.enabled === false) continue;
-    const ok = await fetchTrackerLogo(tracker).catch(() => false);
+    const ok = await fetchTrackerLogo(tracker, force).catch(() => false);
     out.push({ id: tracker.id, name: tracker.name, ok });
   }
   return out;
 }
 
-/** Liste des trackers actifs sans aucun logo (ni manuel ni auto) — a fournir a la main. */
-export function listTrackersWithoutLogo(trackers: TrackerConfig[]): Array<{ id: string; name: string }> {
+/** Liste des trackers sans aucun logo (ni manuel ni auto) — a fournir a la main. */
+export function listTrackersWithoutLogo(trackers: LogoTarget[]): Array<{ id: string; name: string }> {
   return trackers
-    .filter(t => t.enabled !== false && !resolveLogoPath(t.id))
+    .filter(t => !resolveLogoPath(t.id))
     .map(t => ({ id: t.id, name: t.name }));
 }
 

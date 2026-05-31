@@ -1304,7 +1304,7 @@ export async function start(): Promise<void> {
     }
   });
 
-  // ── Logos trackers (favicon en cache) ─────────────────────────────────────
+  // ── Logos trackers (favicon en cache + logos manuels) ─────────────────────
   app.get('/api/tracker-logo/:id', (req, res) => {
     const file = resolveLogoPath(req.params.id);
     if (!file) {
@@ -1316,16 +1316,12 @@ export async function start(): Promise<void> {
   });
 
   app.get('/api/tracker-logos', (_req, res) => {
-    const trackers = normalizeTrackerConfigs();
-    res.json({
-      ok: true,
-      missing: listTrackersWithoutLogo(trackers),
-    });
+    res.json({ ok: true, missing: listTrackersWithoutLogo(listTrackerDefinitionFiles()) });
   });
 
   app.post('/api/tracker-logos/refresh', async (_req, res) => {
     try {
-      const results = await refreshAllLogos(normalizeTrackerConfigs());
+      const results = await refreshAllLogos(listTrackerDefinitionFiles(), true);
       res.json({ ok: true, results, missing: results.filter(r => !r.ok) });
     } catch (err: unknown) {
       res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
@@ -1389,12 +1385,15 @@ export async function start(): Promise<void> {
 
   await refresh(trackers);
 
-  // Recuperation des logos en arriere-plan (non bloquant) — favicons via proxy
-  refreshAllLogos(trackers)
+  // Recuperation automatique des logos au demarrage (non bloquant, FORCE : re-fetch
+  // tous les favicons a chaque boot, pour TOUTES les definitions du dossier trackers
+  // (actives ou non). Les logos manuels dans config/logos/ restent prioritaires et
+  // intacts, et un echec de re-fetch ne supprime pas le logo existant.
+  refreshAllLogos(listTrackerDefinitionFiles(), true)
     .then(results => {
       const missing = results.filter(r => !r.ok).map(r => r.id);
       if (missing.length > 0) {
-        console.log(`[Logos] Sans favicon (a fournir manuellement dans config/logos/<id>.png) : ${missing.join(', ')}`);
+        console.log(`[Logos] Sans favicon auto (deposer un fichier dans config/logos/<id>.png) : ${missing.join(', ')}`);
       }
     })
     .catch(() => { /* best-effort */ });
