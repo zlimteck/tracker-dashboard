@@ -109,6 +109,9 @@ La WebUI permet de choisir 24h/48h/7j/21j.
 L'application calcule ensuite une prochaine exécution pour chaque tracker. Le bouton `Rafraîchir les statistiques` permet de lancer un rafraîchissement manuel.
 
 
+En cas de timeout ponctuel non marque comme incident connu, les dernieres donnees valides restent affichees avec un indicateur orange, puis le dashboard retente automatiquement 3 fois toutes les 10 minutes, puis 3 fois toutes les heures, avant d'attendre la prochaine connexion automatique prevue.
+
+
 ## Sites intégrés
 
 Les définitions de sites déjà fournies sont disponibles directement dans :

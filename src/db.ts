@@ -472,3 +472,30 @@ export function saveStatSnapshots(stats: TrackerStats[]): void {
     );
   }
 }
+
+export function getLatestOkStatSnapshot(tracker: TrackerConfig): TrackerStats | null {
+  const row = getDb()
+    .prepare(`
+      SELECT tracker_name, fields_json, captured_at
+      FROM stat_snapshots
+      WHERE tracker_id = ? AND status = 'ok'
+      ORDER BY captured_at DESC, id DESC
+      LIMIT 1
+    `)
+    .get(tracker.id);
+  if (!row) return null;
+  try {
+    const fields = JSON.parse(String(row.fields_json)) as Record<string, string | number>;
+    return {
+      id: tracker.id,
+      name: String(row.tracker_name || tracker.name),
+      trackerUrl: tracker.baseUrl,
+      status: 'ok',
+      lastUpdated: String(row.captured_at),
+      byteUnit: tracker.dashboard?.byteUnit ?? 'binary',
+      fields,
+    };
+  } catch {
+    return null;
+  }
+}

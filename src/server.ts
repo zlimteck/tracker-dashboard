@@ -26,6 +26,7 @@ import {
   importLegacySettingsIfNeeded,
   importLegacyTrackersIfNeeded,
   getJsonSetting,
+  getLatestOkStatSnapshot,
   listTrackerCredentialSummaries,
   listTrackerDefinitionFiles,
   listTrackerSchedules,
@@ -545,6 +546,21 @@ function blockedStats(trackers: TrackerConfig[]): TrackerStats[] {
 const incidentOkStreaks = new Map<string, number>();
 const INCIDENT_AUTO_CLEAR_AFTER = 2; // nb de fetchs OK consecutifs avant auto-lever
 
+interface RetryState {
+  attempts: number;
+  nextRunAt: number;
+}
+
+const retryStates = new Map<string, RetryState>();
+const RETRY_DELAYS_MS = [
+  10 * 60_000,
+  10 * 60_000,
+  10 * 60_000,
+  60 * 60_000,
+  60 * 60_000,
+  60 * 60_000,
+];
+
 /**
  * Effet de bord : gere le compteur de OK consecutifs et leve l'incident apres
  * INCIDENT_AUTO_CLEAR_AFTER fetchs OK d'affilee. Toute erreur remet le compteur a zero.
@@ -577,10 +593,66 @@ function processIncidentStreak(stat: TrackerStats): void {
  * Sur une stat OK, on n'attache rien (la carte verte n'affiche pas de badge incident).
  */
 function attachIncident(stat: TrackerStats): TrackerStats {
-  if (stat.status === 'ok') return stat;
+  if (stat.status === 'ok' && !stat.stale) return stat;
   const incident = getIncident(stat.id);
   if (!incident) return stat;
   return { ...stat, incident: { acknowledged: incident.acknowledged, note: incident.note } };
+}
+
+function isTimeoutStat(stat: TrackerStats): boolean {
+  const error = stat.error?.toLowerCase() ?? '';
+  return error.includes('timeout') || error.includes('timed out') || error.includes('45000ms');
+}
+
+function latestKnownOkStat(tracker: TrackerConfig): TrackerStats | null {
+  const cached = cachedStats.find(stat => stat.id === tracker.id && stat.status === 'ok' && !stat.stale);
+  if (cached) return { ...cached, stale: undefined, incident: undefined };
+  return getLatestOkStatSnapshot(tracker);
+}
+
+function preserveLastKnownOnTimeout(tracker: TrackerConfig, stat: TrackerStats): TrackerStats {
+  if (stat.status !== 'error' || !isTimeoutStat(stat)) return stat;
+  const incident = getIncident(stat.id);
+  if (incident?.acknowledged) return stat;
+  const previous = latestKnownOkStat(tracker);
+  if (!previous) return stat;
+  return {
+    ...previous,
+    name: tracker.name,
+    trackerUrl: tracker.baseUrl,
+    byteUnit: tracker.dashboard?.byteUnit ?? previous.byteUnit,
+    stale: {
+      reason: 'timeout',
+      error: stat.error ?? 'Timeout lors du refresh',
+      failedAt: stat.lastUpdated,
+      siteReachability: stat.siteReachability,
+    },
+  };
+}
+
+function updateRetryState(tracker: TrackerConfig, fetched: TrackerStats, displayed: TrackerStats): void {
+  if (fetched.status === 'ok') {
+    retryStates.delete(tracker.id);
+    return;
+  }
+
+  const incident = getIncident(tracker.id);
+  if (incident?.acknowledged || !displayed.stale) {
+    retryStates.delete(tracker.id);
+    return;
+  }
+
+  const current = retryStates.get(tracker.id);
+  const attempts = current ? current.attempts + 1 : 0;
+  if (attempts >= RETRY_DELAYS_MS.length) {
+    retryStates.delete(tracker.id);
+    return;
+  }
+
+  retryStates.set(tracker.id, {
+    attempts,
+    nextRunAt: Date.now() + RETRY_DELAYS_MS[attempts],
+  });
 }
 
 function upsertCachedStat(stat: TrackerStats): void {
@@ -609,6 +681,10 @@ function visibleStats(trackers: TrackerConfig[]): TrackerStats[] {
 }
 
 function logStatResult(stat: TrackerStats): void {
+  if (stat.stale) {
+    console.log(`  [${stat.name}] Stats anciennes conservees - ${stat.stale.error}`);
+    return;
+  }
   if (stat.status === 'ok') {
     const fields = Object.entries(stat.fields)
       .filter(([, value]) => value !== '' && value !== undefined && value !== null)
@@ -741,15 +817,17 @@ async function refresh(trackers: TrackerConfig[]): Promise<void> {
         return stat;
       }
 
-      const stat = await fetchTracker(tracker, creds);
-      processIncidentStreak(stat); // une fois par tracker par cycle
+      const fetched = await fetchTracker(tracker, creds);
+      processIncidentStreak(fetched); // une fois par tracker par cycle
+      const stat = preserveLastKnownOnTimeout(tracker, fetched);
+      updateRetryState(tracker, fetched, stat);
       upsertCachedStat(stat);
       logStatResult(stat);
       return stat;
     });
     cachedStats = results.map(attachIncident);
     lastRefresh = new Date().toISOString();
-    saveStatSnapshots(cachedStats);
+    saveStatSnapshots(cachedStats.filter(stat => !stat.stale));
     const ok  = cachedStats.filter(s => s.status === 'ok').length;
     const err = cachedStats.filter(s => s.status === 'error').length;
     console.log(`  ✅ ${ok} ok  ❌ ${err} erreur(s)`);
@@ -792,11 +870,13 @@ async function refreshOneTracker(
     return stat;
   }
 
-  const stat = await fetchTracker(tracker, creds);
-  processIncidentStreak(stat); // une fois par tracker par cycle
+  const fetched = await fetchTracker(tracker, creds);
+  processIncidentStreak(fetched); // une fois par tracker par cycle
+  const stat = preserveLastKnownOnTimeout(tracker, fetched);
+  updateRetryState(tracker, fetched, stat);
   upsertCachedStat(stat);
   logStatResult(stat);
-  saveStatSnapshots([stat]);
+  if (!stat.stale) saveStatSnapshots([stat]);
   return stat;
 }
 
@@ -831,6 +911,7 @@ function randomSpacingMs(): number {
 
 async function refreshScheduledTracker(
   tracker: TrackerConfig,
+  markSchedule = true,
 ): Promise<void> {
   if (isRefreshing) return;
   if (!proxyAllowsTrackerConnections()) {
@@ -846,11 +927,14 @@ async function refreshScheduledTracker(
 
   const schedule = getTrackerSchedule(tracker.id);
   const intervalHours = schedule?.intervalHours ?? 24;
-  const stat = await fetchTracker(tracker, creds);
+  const fetched = await fetchTracker(tracker, creds);
+  processIncidentStreak(fetched);
+  const stat = preserveLastKnownOnTimeout(tracker, fetched);
+  updateRetryState(tracker, fetched, stat);
   upsertCachedStat(stat);
   logStatResult(stat);
-  saveStatSnapshots([stat]);
-  markTrackerScheduleRun(tracker.id, nextRandomRun(intervalHours));
+  if (!stat.stale) saveStatSnapshots([stat]);
+  if (markSchedule) markTrackerScheduleRun(tracker.id, nextRandomRun(intervalHours));
 }
 
 function startScheduler(): void {
@@ -867,6 +951,7 @@ function startScheduler(): void {
       if (pendingScheduledRuns.has(schedule.trackerId)) continue;
       const tracker = trackers.find(t => t.id === schedule.trackerId && t.enabled !== false);
       if (!tracker) continue;
+      retryStates.delete(tracker.id);
       pendingScheduledRuns.add(schedule.trackerId);
       delay += randomSpacingMs();
       setTimeout(() => {
@@ -876,6 +961,32 @@ function startScheduler(): void {
           })
           .finally(() => {
             pendingScheduledRuns.delete(schedule.trackerId);
+          });
+      }, delay);
+    }
+
+    const retries = [...retryStates.entries()]
+      .filter(([, state]) => state.nextRunAt <= now);
+    for (const [trackerId] of shuffled(retries)) {
+      if (pendingScheduledRuns.has(trackerId)) continue;
+      if (getIncident(trackerId)?.acknowledged) {
+        retryStates.delete(trackerId);
+        continue;
+      }
+      const tracker = trackers.find(t => t.id === trackerId && t.enabled !== false);
+      if (!tracker) {
+        retryStates.delete(trackerId);
+        continue;
+      }
+      pendingScheduledRuns.add(trackerId);
+      delay += randomSpacingMs();
+      setTimeout(() => {
+        refreshScheduledTracker(tracker, false)
+          .catch(err => {
+            console.error(`[${tracker.name}] Retry timeout en erreur :`, err);
+          })
+          .finally(() => {
+            pendingScheduledRuns.delete(trackerId);
           });
       }, delay);
     }
@@ -924,8 +1035,11 @@ function renderPrometheusMetrics(stats: TrackerStats[]): string {
     { name: 'tracker_points',         help: 'Points (ratioless trackers)', type: 'gauge', pick: s => toNumber(s.fields.points) },
     { name: 'tracker_rate_per_day',   help: 'Points earned per day (ratioless)', type: 'gauge', pick: s => toNumber(s.fields.rate) },
     { name: 'tracker_tokens',         help: 'Freeleech tokens', type: 'gauge', pick: s => toNumber(s.fields.tokens) },
-    { name: 'tracker_up',             help: '1 if last fetch succeeded, 0 if error', type: 'gauge', pick: s => s.status === 'ok' ? 1 : 0 },
-    { name: 'tracker_site_reachable', help: '1 if last ping succeeded, 0 if failed, absent if not measured', type: 'gauge', pick: s => s.siteReachability ? (s.siteReachability.reachable ? 1 : 0) : null },
+    { name: 'tracker_up',             help: '1 if last fetch succeeded, 0 if error', type: 'gauge', pick: s => s.status === 'ok' && !s.stale ? 1 : 0 },
+    { name: 'tracker_site_reachable', help: '1 if last ping succeeded, 0 if failed, absent if not measured', type: 'gauge', pick: s => {
+        const reachability = s.stale?.siteReachability ?? s.siteReachability;
+        return reachability ? (reachability.reachable ? 1 : 0) : null;
+      } },
     { name: 'tracker_last_update_timestamp_seconds', help: 'Unix timestamp of last refresh', type: 'gauge', pick: s => {
         const t = Date.parse(s.lastUpdated);
         return Number.isFinite(t) ? Math.floor(t / 1000) : null;
@@ -1439,6 +1553,7 @@ export async function start(): Promise<void> {
     const incident = setIncident(trackerId, acknowledged, note);
     // Nouvel incident marque -> on repart d'un compteur de OK vierge (2 OK requis)
     incidentOkStreaks.delete(trackerId);
+    if (acknowledged) retryStates.delete(trackerId);
     // Re-annoter le cache pour que /api/stats reflete immediatement le changement
     const cached = cachedStats.find(s => s.id === trackerId);
     if (cached) upsertCachedStat({ ...cached, incident: undefined });

@@ -90,4 +90,11 @@ export interface TrackerStats {
   fields: Record<string, string | number>;
   /** Incident "connu" manuellement signale par l'utilisateur (auto-clear sur status=ok) */
   incident?: { acknowledged: boolean; note: string };
+  /** Dernieres donnees OK conservees apres un timeout ponctuel du refresh courant. */
+  stale?: {
+    reason: 'timeout';
+    error: string;
+    failedAt: string;
+    siteReachability?: TrackerStats['siteReachability'];
+  };
 }
