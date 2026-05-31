@@ -6,43 +6,45 @@ import { selectUserAgent } from './userAgent.js';
 import { getTrackerCookie } from './db.js';
 import { type TrackerConfig } from './types.js';
 
-interface InjectableCookie {
+// Cookie minimal : on garde juste name+value (+ flags), et on injecte via `url`
+// (Playwright derive domaine/chemin) -> bien plus robuste que domain/path manuels.
+interface ParsedCookie {
   name: string;
   value: string;
-  domain: string;
-  path: string;
   secure?: boolean;
   httpOnly?: boolean;
   expires?: number;
 }
 
+const COOKIE_NAME_RE = /^[^\s=;,]+$/; // un nom de cookie valide ne contient ni espace, ni = ; ,
+
 /**
- * Format Netscape (cookies.txt) : lignes TAB-separees a 7 champs
+ * Format Netscape (cookies.txt) : 7 champs
  * domain  includeSubdomains  path  secure  expiry  name  value
- * Les lignes "#HttpOnly_..." sont gerees, les autres "#" sont des commentaires.
+ * Separes par TAB normalement ; on tolere aussi les espaces multiples au cas ou
+ * le copier-coller aurait converti les tabulations.
  */
-function parseNetscapeCookies(raw: string, host: string): InjectableCookie[] {
-  const out: InjectableCookie[] = [];
+function parseNetscapeCookies(raw: string): ParsedCookie[] {
+  const out: ParsedCookie[] = [];
   for (const line of raw.split(/\r?\n/)) {
     let l = line.trim();
     if (!l) continue;
     let httpOnly = false;
     if (l.startsWith('#HttpOnly_')) { httpOnly = true; l = l.slice('#HttpOnly_'.length); }
     else if (l.startsWith('#')) continue;
-    const p = l.split('\t');
+    let p = l.split('\t');
+    if (p.length < 7) p = l.split(/\s+/); // tolerance : tabs convertis en espaces
     if (p.length < 7) continue;
-    const [domain, , cpath, secure, expiry, name] = p;
-    const value = p.slice(6).join('\t');
-    if (!name) continue;
-    const cookie: InjectableCookie = {
+    const name = p[5];
+    const value = p.slice(6).join(' ');
+    if (!name || !COOKIE_NAME_RE.test(name)) continue;
+    const cookie: ParsedCookie = {
       name,
       value,
-      domain: domain || host,
-      path: cpath || '/',
-      secure: secure.toUpperCase() === 'TRUE',
+      secure: String(p[3]).toUpperCase() === 'TRUE',
       httpOnly,
     };
-    const exp = Number(expiry);
+    const exp = Number(p[4]);
     if (Number.isFinite(exp) && exp > 0) cookie.expires = exp;
     out.push(cookie);
   }
@@ -50,14 +52,12 @@ function parseNetscapeCookies(raw: string, host: string): InjectableCookie[] {
 }
 
 /**
- * Convertit un cookie fourni par l'utilisateur en cookies injectables Playwright.
- * Accepte trois formats :
- *  - export JSON (extension type Cookie-Editor)
- *  - fichier Netscape cookies.txt (TAB-separe)
- *  - chaine d'en-tete "name=value; name2=value2" copiee depuis les devtools
+ * Convertit le cookie fourni par l'utilisateur. Trois formats acceptes :
+ *  - export JSON (Cookie-Editor : name/value/secure/httpOnly/expirationDate)
+ *  - fichier Netscape cookies.txt
+ *  - chaine d'en-tete "name=value; name2=value2"
  */
-function parseCookies(raw: string, baseUrl: string): InjectableCookie[] {
-  const host = new URL(baseUrl).hostname;
+function parseCookies(raw: string): ParsedCookie[] {
   const trimmed = raw.trim();
 
   if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
@@ -66,30 +66,30 @@ function parseCookies(raw: string, baseUrl: string): InjectableCookie[] {
       const arr = Array.isArray(parsed) ? parsed : [parsed];
       return arr
         .filter((c: unknown): c is Record<string, unknown> =>
-          Boolean(c) && typeof (c as Record<string, unknown>).name === 'string'
-          && typeof (c as Record<string, unknown>).value !== 'undefined')
+          Boolean(c) && typeof (c as Record<string, unknown>).name === 'string')
         .map((c) => {
-          const domain = typeof c.domain === 'string' && c.domain ? c.domain : host;
-          return {
+          const cookie: ParsedCookie = {
             name: String(c.name),
-            value: String(c.value),
-            domain,
-            path: typeof c.path === 'string' && c.path ? c.path : '/',
+            value: String(c.value ?? ''),
             secure: c.secure === true,
             httpOnly: c.httpOnly === true,
           };
-        });
+          const exp = Number(c.expirationDate ?? c.expires);
+          if (Number.isFinite(exp) && exp > 0) cookie.expires = Math.floor(exp);
+          return cookie;
+        })
+        .filter(c => COOKIE_NAME_RE.test(c.name));
     } catch {
-      // pas du JSON valide -> on essaie les autres formats
+      // pas du JSON valide -> autres formats
     }
   }
 
-  // Format Netscape cookies.txt (contient des tabulations)
-  if (trimmed.includes('\t')) {
-    const netscape = parseNetscapeCookies(trimmed, host);
+  if (trimmed.includes('\t') || /\n/.test(trimmed)) {
+    const netscape = parseNetscapeCookies(trimmed);
     if (netscape.length > 0) return netscape;
   }
 
+  // En-tete "name=value; name2=value2"
   return trimmed
     .split(';')
     .map(part => part.trim())
@@ -98,21 +98,35 @@ function parseCookies(raw: string, baseUrl: string): InjectableCookie[] {
       const eq = part.indexOf('=');
       const name = (eq >= 0 ? part.slice(0, eq) : part).trim();
       const value = eq >= 0 ? part.slice(eq + 1).trim() : '';
-      return { name, value, domain: host, path: '/' };
+      return { name, value };
     })
-    .filter(c => c.name.length > 0);
+    .filter(c => COOKIE_NAME_RE.test(c.name));
 }
 
 async function injectStoredCookies(tracker: TrackerConfig, context: BrowserContext): Promise<void> {
   const raw = getTrackerCookie(tracker.id);
-  if (!raw) {
+  if (!raw) return;
+  const parsed = parseCookies(raw);
+  if (parsed.length === 0) {
+    console.warn(`[Cookies] ${tracker.id} : aucun cookie reconnu dans la valeur fournie (format invalide ?)`);
     return;
   }
-  const cookies = parseCookies(raw, tracker.baseUrl);
-  if (cookies.length === 0) return;
-  await context.addCookies(cookies).catch((err: unknown) => {
+  // Injection via `url` : Playwright en deduit domaine/chemin -> robuste.
+  const url = tracker.baseUrl;
+  const cookies = parsed.map(c => ({
+    name: c.name,
+    value: c.value,
+    url,
+    ...(c.secure !== undefined ? { secure: c.secure } : {}),
+    ...(c.httpOnly !== undefined ? { httpOnly: c.httpOnly } : {}),
+    ...(c.expires !== undefined ? { expires: c.expires } : {}),
+  }));
+  try {
+    await context.addCookies(cookies);
+    console.log(`[Cookies] ${tracker.id} : ${cookies.length} cookie(s) injecte(s) (${parsed.map(c => c.name).join(', ')})`);
+  } catch (err: unknown) {
     console.warn(`[Cookies] ${tracker.id} : injection echouee - ${err instanceof Error ? err.message : err}`);
-  });
+  }
 }
 
 /**
