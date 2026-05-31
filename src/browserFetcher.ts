@@ -3,7 +3,73 @@ import path from 'path';
 import { chromium, type BrowserContext, type Page } from 'playwright';
 import { resolveProxyForTracker } from './proxy.js';
 import { selectUserAgent } from './userAgent.js';
+import { getTrackerCookie } from './db.js';
 import { type TrackerConfig } from './types.js';
+
+interface InjectableCookie {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  secure?: boolean;
+  httpOnly?: boolean;
+}
+
+/**
+ * Convertit un cookie fourni par l'utilisateur en cookies injectables Playwright.
+ * Accepte soit un export JSON (extension type Cookie-Editor), soit une chaine
+ * d'en-tete "name=value; name2=value2" copiee depuis les devtools.
+ */
+function parseCookies(raw: string, baseUrl: string): InjectableCookie[] {
+  const host = new URL(baseUrl).hostname;
+  const trimmed = raw.trim();
+
+  if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      const arr = Array.isArray(parsed) ? parsed : [parsed];
+      return arr
+        .filter((c: unknown): c is Record<string, unknown> =>
+          Boolean(c) && typeof (c as Record<string, unknown>).name === 'string'
+          && typeof (c as Record<string, unknown>).value !== 'undefined')
+        .map((c) => {
+          const domain = typeof c.domain === 'string' && c.domain ? c.domain : host;
+          return {
+            name: String(c.name),
+            value: String(c.value),
+            domain,
+            path: typeof c.path === 'string' && c.path ? c.path : '/',
+            secure: c.secure === true,
+            httpOnly: c.httpOnly === true,
+          };
+        });
+    } catch {
+      // pas du JSON valide -> on tombe sur le parsing en-tete ci-dessous
+    }
+  }
+
+  return trimmed
+    .split(';')
+    .map(part => part.trim())
+    .filter(Boolean)
+    .map(part => {
+      const eq = part.indexOf('=');
+      const name = (eq >= 0 ? part.slice(0, eq) : part).trim();
+      const value = eq >= 0 ? part.slice(eq + 1).trim() : '';
+      return { name, value, domain: host, path: '/' };
+    })
+    .filter(c => c.name.length > 0);
+}
+
+async function injectStoredCookies(tracker: TrackerConfig, context: BrowserContext): Promise<void> {
+  const raw = getTrackerCookie(tracker.id);
+  if (!raw) return;
+  const cookies = parseCookies(raw, tracker.baseUrl);
+  if (cookies.length === 0) return;
+  await context.addCookies(cookies).catch((err: unknown) => {
+    console.warn(`[Cookies] ${tracker.id} : injection echouee - ${err instanceof Error ? err.message : err}`);
+  });
+}
 
 const PROFILE_DIR = path.join(process.cwd(), 'config', 'browser-profile');
 const contexts = new Map<string, BrowserContext>();
@@ -59,6 +125,7 @@ async function getContext(tracker: TrackerConfig): Promise<BrowserContext> {
       locale: 'fr-FR',
     },
   );
+  await injectStoredCookies(tracker, context);
   contexts.set(tracker.id, context);
   return context;
 }

@@ -3,7 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import axios from 'axios';
 import { fetchTracker, invalidateAllSessions, invalidateSession } from './fetcher.js';
-import { resetBrowserProfile } from './browserFetcher.js';
+import { resetBrowserProfile, closeBrowserSession } from './browserFetcher.js';
 import { type FieldExtractor, type TrackerConfig, type TrackerStats } from './types.js';
 import {
   loadProxySettings, saveProxySettings, buildProxyConfig, logProxyStatus,
@@ -38,6 +38,8 @@ import {
   saveTrackerConfig,
   saveTrackerSchedule,
   setJsonSetting,
+  hasTrackerCookie,
+  setTrackerCookie,
 } from './db.js';
 import {
   createSessionCookie,
@@ -1175,6 +1177,7 @@ export async function start(): Promise<void> {
             configured: Boolean(tracker),
             username: credentials.get(definition.id)?.username ?? '',
             hasPassword: credentials.get(definition.id)?.hasPassword ?? false,
+            hasCookie: hasTrackerCookie(definition.id),
             updatedAt: credentials.get(definition.id)?.updatedAt ?? null,
           };
         })
@@ -1351,6 +1354,21 @@ export async function start(): Promise<void> {
       console.error('[Proxy] Sauvegarde overrides KO :', error);
       res.status(500).json({ ok: false, error });
     }
+  });
+
+  // ── Cookie de session manuel (sites a CAPTCHA / Cloudflare Turnstile) ──────
+  app.post('/api/trackers/:trackerId/cookie', (req, res) => {
+    const id = req.params.trackerId;
+    if (!new Set(listTrackerDefinitionFiles().map(t => t.id)).has(id)) {
+      return res.status(404).json({ ok: false, error: 'Tracker inconnu' });
+    }
+    const cookie = typeof req.body?.cookie === 'string' ? req.body.cookie : '';
+    setTrackerCookie(id, cookie);
+    // Fermer le contexte en memoire pour que le cookie soit (re)injecte au prochain fetch
+    closeBrowserSession(id).catch(() => {});
+    invalidateSession(id);
+    console.log(`[Cookies] ${id} : cookie de session ${cookie.trim() ? 'enregistre' : 'efface'}`);
+    res.json({ ok: true, hasCookie: hasTrackerCookie(id) });
   });
 
   // ── Reset du profil navigateur d'un tracker ───────────────────────────────

@@ -618,6 +618,32 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    .definition-row small a { color: var(--blue); text-decoration: none; }
+    .definition-row small a:hover { text-decoration: underline; }
+    .definition-advanced { margin-top: 6px; }
+    .definition-advanced > summary {
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--muted);
+      list-style: none;
+      user-select: none;
+      width: fit-content;
+    }
+    .definition-advanced > summary::-webkit-details-marker { display: none; }
+    .definition-advanced > summary::before { content: "▸ "; }
+    .definition-advanced[open] > summary::before { content: "▾ "; }
+    .definition-advanced > summary:hover { color: var(--blue); }
+    .definition-advanced-body {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: flex-end;
+      margin-top: 8px;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--muted) 6%, transparent);
+    }
     .definition-actions {
       display: flex;
       align-items: center;
@@ -1561,7 +1587,7 @@
               <div class="definition-row">
                 <div class="definition-info">
                   <strong>${trackerLogo(definition.id)}${escapeHtml(definition.name)}</strong>
-                  <small>${escapeHtml(definition.file)} · ${escapeHtml(definition.baseUrl)}</small>
+                  <small>${escapeHtml(definition.file)} · <a href="${escapeHtml(definition.baseUrl)}" target="_blank" rel="noreferrer noopener">${escapeHtml(definition.baseUrl)}</a></small>
                 </div>
                 ${isNew ? '<span class="definition-badge">Nouveau</span>' : ''}
                 <span class="definition-badge ${isEnabled ? '' : 'definition-badge-muted'}">${isEnabled ? 'Actif' : 'Disponible'}</span>
@@ -1585,9 +1611,24 @@
                 <div class="definition-actions">
                   <button class="btn-test" style="padding:6px 10px" onclick="setTrackerEnabled('${safeId}', ${isEnabled ? 'false' : 'true'})">${isEnabled ? 'Retirer' : 'Ajouter'}</button>
                 </div>
-                <div class="definition-actions">
-                  <button class="btn-test" style="padding:6px 10px" title="Efface le profil navigateur (cookies/session) de ce tracker. Utile si le login reste bloqué sur 'non authentifié' après un changement de mot de passe, une session expirée ou un challenge Cloudflare. Le prochain rafraîchissement repartira d'une session vierge." onclick="resetTrackerProfile('${safeId}', this)">Reset profil</button>
-                </div>
+                <details class="definition-advanced" style="grid-column:1/-1">
+                  <summary>Options avancées${credential.hasCookie ? ' · <b style="color:var(--green)">cookie défini</b>' : ''}</summary>
+                  <div class="definition-advanced-body">
+                    <div class="tracker-field" style="flex:1; min-width:260px">
+                      <label>Cookie de session <span style="color:var(--muted)">— sites à CAPTCHA / Cloudflare Turnstile${credential.hasCookie ? ' · <b style="color:var(--green)">défini</b>' : ''}</span></label>
+                      <div style="display:flex; gap:8px; align-items:center">
+                        <input class="tracker-input" id="credential-cookie-${safeId}" autocomplete="off" style="flex:1"
+                          placeholder="${credential.hasCookie ? '•••••••• (enregistré — colle pour remplacer, vide pour effacer)' : 'nom=valeur; nom2=valeur2   (ou export JSON Cookie-Editor)'}"
+                          title="Connecte-toi au site dans ton navigateur, ouvre les DevTools (F12) → Application/Stockage → Cookies, puis copie soit la chaîne 'nom=valeur; nom2=valeur2', soit l'export JSON d'une extension type Cookie-Editor. Le dashboard l'injecte dans le navigateur headless et saute le login + Turnstile.">
+                        <button class="btn-save" style="padding:6px 10px" onclick="saveTrackerCookie('${safeId}', this)">Enregistrer cookie</button>
+                      </div>
+                    </div>
+                    <div class="tracker-field">
+                      <label>Profil navigateur</label>
+                      <button class="btn-test" style="padding:6px 10px" title="Efface le profil navigateur (cookies/session) de ce tracker. Utile si le login reste bloqué sur 'non authentifié' après un changement de mot de passe, une session expirée ou un challenge Cloudflare. Le prochain rafraîchissement repartira d'une session vierge." onclick="resetTrackerProfile('${safeId}', this)">Reset profil</button>
+                    </div>
+                  </div>
+                </details>
               </div>`;
           }).join('')}
         </div>`;
@@ -1601,6 +1642,30 @@
     await fetch('/api/tracker-definitions/seen', { method: 'POST' });
     await loadTrackerDefinitionsPanel();
     await loadConfig();
+  }
+
+  async function saveTrackerCookie(trackerId, btn) {
+    const input = document.getElementById(`credential-cookie-${trackerId}`);
+    const cookie = input ? input.value : '';
+    const previous = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '...';
+    try {
+      const r = await fetch(`/api/trackers/${encodeURIComponent(trackerId)}/cookie`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cookie }),
+      });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || 'Erreur');
+      btn.textContent = d.hasCookie ? 'Cookie enregistré' : 'Cookie effacé';
+      if (input) input.value = '';
+      setTimeout(() => { btn.disabled = false; btn.textContent = previous; loadTrackerDefinitionsPanel(); }, 1800);
+    } catch (e) {
+      btn.textContent = 'Erreur';
+      setTimeout(() => { btn.disabled = false; btn.textContent = previous; }, 2000);
+      console.warn('saveTrackerCookie:', e.message);
+    }
   }
 
   async function resetTrackerProfile(trackerId, btn) {

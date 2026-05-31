@@ -136,6 +136,27 @@ export function setJsonSetting(key: string, value: unknown): void {
     .run(key, JSON.stringify(value));
 }
 
+// ─── Cookies de session manuels (pour sites a CAPTCHA / Cloudflare Turnstile) ──
+// On stocke la chaine de cookie brute fournie par l'utilisateur, par tracker.
+type TrackerCookieMap = Record<string, string>;
+
+export function getTrackerCookie(trackerId: string): string {
+  const all = getJsonSetting('tracker_cookies', {} as TrackerCookieMap);
+  return all && typeof all[trackerId] === 'string' ? all[trackerId] : '';
+}
+
+export function hasTrackerCookie(trackerId: string): boolean {
+  return getTrackerCookie(trackerId).trim().length > 0;
+}
+
+export function setTrackerCookie(trackerId: string, cookie: string): void {
+  const all = getJsonSetting('tracker_cookies', {} as TrackerCookieMap);
+  const value = (cookie ?? '').trim();
+  if (value) all[trackerId] = value;
+  else delete all[trackerId];
+  setJsonSetting('tracker_cookies', all);
+}
+
 export function importLegacySettingsIfNeeded(): void {
   const existing = getDb().prepare('SELECT value FROM settings WHERE key = ?').get('proxy');
   if (existing || !fs.existsSync(path.join(CONFIG_DIR, 'settings.json'))) return;

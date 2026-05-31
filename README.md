@@ -25,6 +25,7 @@ Export Prometheus + dashboard Grafana — endpoint `/metrics` (protégé par tok
 
 ## Changements récents
 
+- Ajout cookies de sessions pour tous les trackers, pour éviter les complications (captchas, antibots etc) lors des logins via le browser headless
 - Ajout crazySpirits (merci jack)
 - Ajout automatique de logos
 - Ajout vue Liste en sus de Cartes
