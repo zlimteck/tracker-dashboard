@@ -9,8 +9,7 @@
     "contentType": "form",
     "body": {
       "username": "{{username}}",
-      "password": "{{password}}",
-      "rememberme": "on"
+      "password": "{{password}}"
     },
     "failurePatterns": [
       "type=\"password\"",

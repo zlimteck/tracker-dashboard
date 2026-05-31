@@ -661,6 +661,35 @@ function fakeStatsForPresentation(): TrackerStats[] {
     });
 }
 
+// Nombre de trackers rafraichis en parallele. Au-dela, le navigateur headless sature
+// (chaque tracker en mode browser lance un Chromium). 3 = bon compromis vitesse/charge.
+// Surchargeable via la variable d'env REFRESH_CONCURRENCY.
+const REFRESH_CONCURRENCY = Math.max(1, Number(process.env.REFRESH_CONCURRENCY) || 3);
+
+/**
+ * Applique `fn` a tous les items avec au plus `limit` executions simultanees.
+ * Preserve l'ordre des resultats. Ne rejette jamais (fn doit gerer ses erreurs).
+ */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+  const worker = async (): Promise<void> => {
+    while (true) {
+      const index = cursor;
+      cursor += 1;
+      if (index >= items.length) return;
+      results[index] = await fn(items[index]);
+    }
+  };
+  const pool = Array.from({ length: Math.min(limit, items.length) }, () => worker());
+  await Promise.all(pool);
+  return results;
+}
+
 async function refresh(trackers: TrackerConfig[]): Promise<void> {
   if (isRefreshing) return;
   isRefreshing = true;
@@ -682,7 +711,7 @@ async function refresh(trackers: TrackerConfig[]): Promise<void> {
 
     const credentials = loadCredentialsFromDb();
     const enabledTrackers = trackers.filter(t => t.enabled !== false);
-    const results = await Promise.all(enabledTrackers.map(async tracker => {
+    const results = await mapWithConcurrency(enabledTrackers, REFRESH_CONCURRENCY, async tracker => {
       const creds = credentials[tracker.id];
       if (!creds) {
         const stat: TrackerStats = {
@@ -705,7 +734,7 @@ async function refresh(trackers: TrackerConfig[]): Promise<void> {
       upsertCachedStat(stat);
       logStatResult(stat);
       return stat;
-    }));
+    });
     cachedStats = results.map(attachIncident);
     lastRefresh = new Date().toISOString();
     saveStatSnapshots(cachedStats);
