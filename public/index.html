@@ -159,7 +159,7 @@
     .rows-table tbody tr:last-child td { border-bottom: none; }
     .rows-table tbody tr.row-main:hover { background: color-mix(in srgb, var(--blue) 6%, transparent); }
     .rows-table .num { font-variant-numeric: tabular-nums; }
-    .rows-table .u { color: var(--muted); font-size: 11px; margin-left: 2px; }
+    .rows-table .u { color: var(--muted); font-size: 11px; }
     .rows-table .cell-name a { color: var(--text); text-decoration: none; font-weight: 600; }
     .rows-table .cell-name a:hover { color: var(--blue); text-decoration: underline; text-underline-offset: 2px; }
     .rows-table .cell-muted { color: var(--muted); font-size: 12px; }
@@ -910,12 +910,19 @@
 <script>
   // ─── Formatage ─────────────────────────────────────────────────────────────
 
-  function formatBytes(bytes) {
+  function formatBytes(bytes, byteUnit = 'binary') {
     if (bytes === undefined || bytes === null || bytes === '') return '-';
     const b = Number(bytes);
     if (Number.isNaN(b)) return String(bytes);
     const sign = b < 0 ? '-' : '';
     const abs = Math.abs(b);
+    if (byteUnit === 'decimal') {
+      if (abs >= 1e12) return [sign + (abs / 1e12).toFixed(2), 'TB'];
+      if (abs >= 1e9) return [sign + (abs / 1e9).toFixed(2), 'GB'];
+      if (abs >= 1e6) return [sign + (abs / 1e6).toFixed(2), 'MB'];
+      if (abs >= 1e3) return [sign + (abs / 1e3).toFixed(2), 'KB'];
+      return [sign + abs.toFixed(0), 'B'];
+    }
     if (abs >= 1024 ** 4) return [sign + (abs / 1024 ** 4).toFixed(2), 'TiB'];
     if (abs >= 1024 ** 3) return [sign + (abs / 1024 ** 3).toFixed(2), 'GiB'];
     if (abs >= 1024 ** 2) return [sign + (abs / 1024 ** 2).toFixed(2), 'MiB'];
@@ -992,7 +999,7 @@
     return `
       <div class="stat">
         <span class="stat-label">${label}</span>
-        <span class="stat-value ${colorClass ?? ''}">${val ?? '-'}<span class="stat-unit">${u}</span></span>
+        <span class="stat-value ${colorClass ?? ''}">${val ?? '-'}${u ? ' ' : ''}<span class="stat-unit">${u}</span></span>
       </div>`;
   }
 
@@ -1004,10 +1011,14 @@
     return hasStatValue(value) ? value : '-';
   }
 
-  function formatBuffer(fields) {
-    if (hasStatValue(fields.bufferBytes)) return formatBytes(fields.bufferBytes);
+  function statByteUnit(stat) {
+    return stat?.byteUnit === 'decimal' ? 'decimal' : 'binary';
+  }
+
+  function formatBuffer(fields, byteUnit = 'binary') {
+    if (hasStatValue(fields.bufferBytes)) return formatBytes(fields.bufferBytes, byteUnit);
     if (!hasStatValue(fields.uploadedBytes) || !hasStatValue(fields.downloadedBytes)) return '-';
-    return formatBytes(Number(fields.uploadedBytes) - Number(fields.downloadedBytes));
+    return formatBytes(Number(fields.uploadedBytes) - Number(fields.downloadedBytes), byteUnit);
   }
 
   function computedRatio(fields) {
@@ -1387,7 +1398,8 @@
 
     const ratio = computedRatio(f);
     const hasRatio = hasStatValue(ratio);
-    const buffer = formatBuffer(f);
+    const byteUnit = statByteUnit(stat);
+    const buffer = formatBuffer(f, byteUnit);
 
     const bottomCells = ratioless
       ? `${statCell('Points', [formatCount(f.points), 'pts'], '', '')}
@@ -1406,8 +1418,8 @@
         <div class="card-badges">${staleBadge(stat)}${ratiolessBadge(stat)}</div>
 
         <div class="stats">
-          ${statCell('Download', formatBytes(f.downloadedBytes), '', '')}
-          ${statCell('Upload', formatBytes(f.uploadedBytes), '', '')}
+          ${statCell('Download', formatBytes(f.downloadedBytes, byteUnit), '', '')}
+          ${statCell('Upload', formatBytes(f.uploadedBytes, byteUnit), '', '')}
           ${statCell('Ratio', hasRatio ? formatRatio(ratio) : '-', '', ratioClass(ratio))}
           ${statCell('Buffer', buffer, '', bufferClass(buffer))}
           ${bottomCells}
@@ -1420,13 +1432,13 @@
 
   // ─── Vue Lignes (tableau) ──────────────────────────────────────────────────
 
-  function bytesText(v) {
-    const r = formatBytes(v);
-    return Array.isArray(r) ? `${r[0]}<span class="u">${r[1]}</span>` : r;
+  function bytesText(v, byteUnit = 'binary') {
+    const r = formatBytes(v, byteUnit);
+    return Array.isArray(r) ? `${r[0]} <span class="u">${r[1]}</span>` : r;
   }
-  function bufferText(fields) {
-    const r = formatBuffer(fields);
-    return Array.isArray(r) ? `${r[0]}<span class="u">${r[1]}</span>` : r;
+  function bufferText(fields, byteUnit = 'binary') {
+    const r = formatBuffer(fields, byteUnit);
+    return Array.isArray(r) ? `${r[0]} <span class="u">${r[1]}</span>` : r;
   }
 
   function rowScheduleCell(stat) {
@@ -1475,13 +1487,14 @@
     const isOpen = expandedIncidents.has(stat.id);
     const ratio = computedRatio(f);
     const hasRatio = hasStatValue(ratio);
+    const byteUnit = statByteUnit(stat);
 
-    const dl = isError ? '<span class="cell-muted">—</span>' : bytesText(f.downloadedBytes);
-    const ul = isError ? '<span class="cell-muted">—</span>' : bytesText(f.uploadedBytes);
+    const dl = isError ? '<span class="cell-muted">—</span>' : bytesText(f.downloadedBytes, byteUnit);
+    const ul = isError ? '<span class="cell-muted">—</span>' : bytesText(f.uploadedBytes, byteUnit);
     const ratioCell = isError ? '<span class="cell-muted">—</span>'
       : `<span class="${ratioClass(ratio)}">${hasRatio ? formatRatio(ratio) : '-'}</span>`;
     const buf = isError ? '<span class="cell-muted">—</span>'
-      : `<span class="${bufferClass(formatBuffer(f))}">${bufferText(f)}</span>`;
+      : `<span class="${bufferClass(formatBuffer(f, byteUnit))}">${bufferText(f, byteUnit)}</span>`;
     const seeding = isError ? '<span class="cell-muted">—</span>' : formatCount(f.seeding);
     // Bonus : seedBonus pour les trackers a ratio, ou Points pour les ratioless
     const bonusRaw = hasStatValue(f.seedBonus) ? f.seedBonus : f.points;

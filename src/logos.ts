@@ -112,8 +112,18 @@ export async function fetchTrackerLogo(tracker: LogoTarget, force = false): Prom
 
   const base = tracker.baseUrl.replace(/\/+$/, '');
 
-  // 1) Tentative directe sur /favicon.ico (souvent servi sans auth)
-  let result = await tryDownload(`${base}/favicon.ico`, tracker.id);
+  // 1) Tentatives directes sur les chemins favicon courants (souvent servis sans auth).
+  // Certains trackers n'exposent pas /favicon.ico mais gardent l'icone dans le theme.
+  let result: { buf: Buffer; type: string; url: string } | null = null;
+  for (const candidate of [
+    `${base}/favicon.ico`,
+    `${base}/favicon.png`,
+    `${base}/apple-touch-icon.png`,
+    `${base}/themes/New_Theme/images/favicon.ico`,
+  ]) {
+    result = await tryDownload(candidate, tracker.id);
+    if (result) break;
+  }
 
   // 2) Sinon, parser la home pour <link rel="icon"> / apple-touch-icon
   if (!result) {
