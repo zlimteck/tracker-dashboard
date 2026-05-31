@@ -290,3 +290,14 @@ export async function closeBrowserSession(trackerId: string): Promise<void> {
   contexts.delete(trackerId);
   await context.close().catch(() => {});
 }
+
+/**
+ * Reset complet du profil navigateur d'un tracker : ferme le contexte en memoire
+ * PUIS supprime le profil persistant sur disque (cookies, localStorage, cache).
+ * Le prochain fetch repartira d'une session navigateur vierge.
+ */
+export async function resetBrowserProfile(trackerId: string): Promise<void> {
+  await closeBrowserSession(trackerId).catch(() => {});
+  const dir = path.join(PROFILE_DIR, trackerId);
+  await fs.promises.rm(dir, { recursive: true, force: true }).catch(() => {});
+}

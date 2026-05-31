@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import axios from 'axios';
 import { fetchTracker, invalidateAllSessions, invalidateSession } from './fetcher.js';
+import { resetBrowserProfile } from './browserFetcher.js';
 import { type FieldExtractor, type TrackerConfig, type TrackerStats } from './types.js';
 import {
   loadProxySettings, saveProxySettings, buildProxyConfig, logProxyStatus,
@@ -1349,6 +1350,22 @@ export async function start(): Promise<void> {
       const error = err instanceof Error ? err.message : String(err);
       console.error('[Proxy] Sauvegarde overrides KO :', error);
       res.status(500).json({ ok: false, error });
+    }
+  });
+
+  // ── Reset du profil navigateur d'un tracker ───────────────────────────────
+  app.post('/api/trackers/:trackerId/reset-profile', async (req, res) => {
+    const id = req.params.trackerId;
+    if (!new Set(listTrackerDefinitionFiles().map(t => t.id)).has(id)) {
+      return res.status(404).json({ ok: false, error: 'Tracker inconnu' });
+    }
+    try {
+      await resetBrowserProfile(id);
+      invalidateSession(id); // reset aussi la session HTTP en memoire
+      console.log(`[Profil] Profil navigateur de ${id} reinitialise`);
+      res.json({ ok: true });
+    } catch (err: unknown) {
+      res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
     }
   });
 

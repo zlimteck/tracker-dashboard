@@ -1585,6 +1585,9 @@
                 <div class="definition-actions">
                   <button class="btn-test" style="padding:6px 10px" onclick="setTrackerEnabled('${safeId}', ${isEnabled ? 'false' : 'true'})">${isEnabled ? 'Retirer' : 'Ajouter'}</button>
                 </div>
+                <div class="definition-actions">
+                  <button class="btn-test" style="padding:6px 10px" title="Efface le profil navigateur (cookies/session) de ce tracker. Utile si le login reste bloqué sur 'non authentifié' après un changement de mot de passe, une session expirée ou un challenge Cloudflare. Le prochain rafraîchissement repartira d'une session vierge." onclick="resetTrackerProfile('${safeId}', this)">Reset profil</button>
+                </div>
               </div>`;
           }).join('')}
         </div>`;
@@ -1598,6 +1601,23 @@
     await fetch('/api/tracker-definitions/seen', { method: 'POST' });
     await loadTrackerDefinitionsPanel();
     await loadConfig();
+  }
+
+  async function resetTrackerProfile(trackerId, btn) {
+    const previous = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '...';
+    try {
+      const r = await fetch(`/api/trackers/${encodeURIComponent(trackerId)}/reset-profile`, { method: 'POST' });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || 'Erreur');
+      btn.textContent = 'Profil réinitialisé';
+      setTimeout(() => { btn.disabled = false; btn.textContent = previous; }, 2500);
+    } catch (e) {
+      btn.textContent = 'Erreur';
+      setTimeout(() => { btn.disabled = false; btn.textContent = previous; }, 2500);
+      console.warn('resetTrackerProfile:', e.message);
+    }
   }
 
   async function setTrackerEnabled(trackerId, enabled) {
