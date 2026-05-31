@@ -13,12 +13,48 @@ interface InjectableCookie {
   path: string;
   secure?: boolean;
   httpOnly?: boolean;
+  expires?: number;
+}
+
+/**
+ * Format Netscape (cookies.txt) : lignes TAB-separees a 7 champs
+ * domain  includeSubdomains  path  secure  expiry  name  value
+ * Les lignes "#HttpOnly_..." sont gerees, les autres "#" sont des commentaires.
+ */
+function parseNetscapeCookies(raw: string, host: string): InjectableCookie[] {
+  const out: InjectableCookie[] = [];
+  for (const line of raw.split(/\r?\n/)) {
+    let l = line.trim();
+    if (!l) continue;
+    let httpOnly = false;
+    if (l.startsWith('#HttpOnly_')) { httpOnly = true; l = l.slice('#HttpOnly_'.length); }
+    else if (l.startsWith('#')) continue;
+    const p = l.split('\t');
+    if (p.length < 7) continue;
+    const [domain, , cpath, secure, expiry, name] = p;
+    const value = p.slice(6).join('\t');
+    if (!name) continue;
+    const cookie: InjectableCookie = {
+      name,
+      value,
+      domain: domain || host,
+      path: cpath || '/',
+      secure: secure.toUpperCase() === 'TRUE',
+      httpOnly,
+    };
+    const exp = Number(expiry);
+    if (Number.isFinite(exp) && exp > 0) cookie.expires = exp;
+    out.push(cookie);
+  }
+  return out;
 }
 
 /**
  * Convertit un cookie fourni par l'utilisateur en cookies injectables Playwright.
- * Accepte soit un export JSON (extension type Cookie-Editor), soit une chaine
- * d'en-tete "name=value; name2=value2" copiee depuis les devtools.
+ * Accepte trois formats :
+ *  - export JSON (extension type Cookie-Editor)
+ *  - fichier Netscape cookies.txt (TAB-separe)
+ *  - chaine d'en-tete "name=value; name2=value2" copiee depuis les devtools
  */
 function parseCookies(raw: string, baseUrl: string): InjectableCookie[] {
   const host = new URL(baseUrl).hostname;
@@ -44,8 +80,14 @@ function parseCookies(raw: string, baseUrl: string): InjectableCookie[] {
           };
         });
     } catch {
-      // pas du JSON valide -> on tombe sur le parsing en-tete ci-dessous
+      // pas du JSON valide -> on essaie les autres formats
     }
+  }
+
+  // Format Netscape cookies.txt (contient des tabulations)
+  if (trimmed.includes('\t')) {
+    const netscape = parseNetscapeCookies(trimmed, host);
+    if (netscape.length > 0) return netscape;
   }
 
   return trimmed

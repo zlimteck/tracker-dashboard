@@ -23,6 +23,25 @@ Au premier accès, l'application demande de créer le compte administrateur de l
 Export Prometheus + dashboard Grafana — endpoint `/metrics` (protégé par token via la variable d'env `METRICS_TOKEN`) exposant les stats de tous les trackers activés au format Prometheus. Dashboard Grafana JSON fourni dans `grafana/dashboard.json` (jauges de ratio, courbes upload/download par tracker, bonus points, deltas quotidiens, état OK/HS). Voir [grafana/README.md](grafana/README.md) pour l'installation.
 
 
+### Cookies de session (sites à CAPTCHA / Cloudflare)
+
+Certains trackers protègent leur page de connexion par un CAPTCHA ou un challenge anti-bot (Cloudflare Turnstile, etc.). Le navigateur headless intégré ne peut pas les résoudre automatiquement, et le login échoue.
+
+Pour ces sites, on peut court-circuiter le login en fournissant directement un **cookie de session** : connectez-vous au tracker dans votre navigateur habituel, exportez le cookie, puis collez-le dans le dashboard (liste des trackers → tracker concerné → **Options avancées** → **Cookie de session**). Le dashboard l'injecte dans le navigateur headless avant chaque lecture, ce qui évite complètement la page de login.
+
+Trois formats sont acceptés (auto-détectés) :
+- fichier **Netscape `cookies.txt`** (le plus simple) ;
+- export **JSON** d'une extension type *Cookie-Editor* ;
+- chaîne d'en-tête brute `nom=valeur; nom2=valeur2` copiée depuis les DevTools (F12 → Application/Stockage → Cookies).
+
+Quelques extensions pratiques pour exporter les cookies :
+- [cookies-txt](https://github.com/hrdl-github/cookies-txt) (export au format Netscape `cookies.txt`)
+- [Cookie-Editor](https://cookie-editor.com/) (export JSON)
+- [Get cookies.txt LOCALLY](https://github.com/kairi003/Get-cookies.txt-LOCALLY)
+
+Le cookie est optionnel et propre à chaque tracker : laissez le champ vide pour les sites qui se connectent normalement. Un cookie de session finit par expirer (de quelques heures à plusieurs semaines selon le site) ; il suffit alors d'en recoller un frais.
+
+
 ## Changements récents
 
 - Ajout cookies de sessions pour tous les trackers, pour éviter les complications (captchas, antibots etc) lors des logins via le browser headless
