@@ -174,7 +174,17 @@ async function ensureLoggedIn(
       if (type === 'hidden') continue;
       if (type === 'checkbox') {
         if (value === 'true' || value === 'on' || value === '1') {
-          await target.check({ timeout: 5000 });
+          // Une checkbox de login (ex: "remember me") est souvent stylisee/masquee par
+          // du CSS : le clic natif echoue. On ne doit JAMAIS bloquer le login pour ca.
+          await target.check({ timeout: 2500 }).catch(async () => {
+            // Fallback : cocher directement via le DOM, meme si l'element est invisible.
+            await target.evaluate(el => {
+              if (el instanceof HTMLInputElement) {
+                el.checked = true;
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+              }
+            }).catch(() => { /* non bloquant */ });
+          });
         }
         break;
       }
