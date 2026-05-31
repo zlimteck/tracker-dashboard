@@ -14,6 +14,9 @@ import {
   loadIncidents, setIncident, getIncident, clearIncident,
 } from './incidents.js';
 import {
+  resolveLogoPath, refreshAllLogos, listTrackersWithoutLogo,
+} from './logos.js';
+import {
   ensureTrackerSchedules,
   deleteTrackerCredentials,
   getTrackerCredentials,
@@ -1301,6 +1304,34 @@ export async function start(): Promise<void> {
     }
   });
 
+  // ── Logos trackers (favicon en cache) ─────────────────────────────────────
+  app.get('/api/tracker-logo/:id', (req, res) => {
+    const file = resolveLogoPath(req.params.id);
+    if (!file) {
+      res.status(404).end();
+      return;
+    }
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.sendFile(file);
+  });
+
+  app.get('/api/tracker-logos', (_req, res) => {
+    const trackers = normalizeTrackerConfigs();
+    res.json({
+      ok: true,
+      missing: listTrackersWithoutLogo(trackers),
+    });
+  });
+
+  app.post('/api/tracker-logos/refresh', async (_req, res) => {
+    try {
+      const results = await refreshAllLogos(normalizeTrackerConfigs());
+      res.json({ ok: true, results, missing: results.filter(r => !r.ok) });
+    } catch (err: unknown) {
+      res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
   // ── Incidents trackers (flag manuel) ──────────────────────────────────────
   app.get('/api/incidents', (_req, res) => {
     res.json({ ok: true, incidents: loadIncidents() });
@@ -1357,6 +1388,16 @@ export async function start(): Promise<void> {
   app.listen(port, () => console.log(`\n🚀  Dashboard → http://localhost:${port}\n`));
 
   await refresh(trackers);
+
+  // Recuperation des logos en arriere-plan (non bloquant) — favicons via proxy
+  refreshAllLogos(trackers)
+    .then(results => {
+      const missing = results.filter(r => !r.ok).map(r => r.id);
+      if (missing.length > 0) {
+        console.log(`[Logos] Sans favicon (a fournir manuellement dans config/logos/<id>.png) : ${missing.join(', ')}`);
+      }
+    })
+    .catch(() => { /* best-effort */ });
 
   startScheduler();
 }

@@ -206,6 +206,13 @@
       padding: 10px 12px 8px;
       border-bottom: 1px solid var(--border);
     }
+    .tracker-logo {
+      width: 16px; height: 16px;
+      border-radius: 3px;
+      object-fit: contain;
+      vertical-align: -3px;
+      margin-right: 6px;
+    }
     .card-name { font-weight: 600; font-size: 15px; color: var(--text); text-decoration: none; }
     .card-name:hover { color: var(--blue); text-decoration: underline; text-underline-offset: 3px; }
     .card-header-actions {
@@ -808,6 +815,10 @@
   <div class="settings-layout">
     <details id="tracker-definitions-panel">
       <summary>Trackers</summary>
+      <div style="margin:0 0 10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap">
+        <button class="btn-test" onclick="refreshLogos()">Rafraîchir les logos</button>
+        <span id="logos-result" style="font-size:12px; color:var(--muted)"></span>
+      </div>
       <div id="tracker-definitions-list" class="credential-status"></div>
       <div class="credential-status" id="credential-result"></div>
     </details>
@@ -1051,11 +1062,45 @@
     }
   }
 
+  function trackerLogo(id) {
+    return `<img class="tracker-logo" src="/api/tracker-logo/${encodeURIComponent(id)}" alt="" loading="lazy" onerror="this.style.display='none'">`;
+  }
+
+  async function refreshLogos() {
+    const out = document.getElementById('logos-result');
+    out.style.color = 'var(--muted)';
+    out.textContent = 'Recuperation des favicons en cours…';
+    try {
+      const r = await fetch('/api/tracker-logos/refresh', { method: 'POST' });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || 'Erreur');
+      const missing = (d.missing || []).map(m => m.name || m.id);
+      if (missing.length === 0) {
+        out.style.color = 'var(--green)';
+        out.textContent = 'Tous les logos sont en place.';
+      } else {
+        out.style.color = 'var(--yellow)';
+        out.textContent = 'Sans logo (a fournir a la main) : ' + missing.join(', ');
+      }
+      // Forcer le rechargement des <img> (cache navigateur)
+      document.querySelectorAll('img.tracker-logo').forEach(img => {
+        const base = img.src.split('?')[0];
+        img.style.display = '';
+        img.src = base + '?t=' + Date.now();
+      });
+      await loadTrackerDefinitionsPanel();
+    } catch (e) {
+      out.style.color = 'var(--red)';
+      out.textContent = 'Erreur : ' + e.message;
+    }
+  }
+
   function trackerName(stat) {
     const href = trackerLink(stat);
     const name = escapeHtml(stat.name);
-    if (!href) return `<span class="card-name">${name}</span>`;
-    return `<a class="card-name" href="${escapeHtml(href)}" target="_blank" rel="noreferrer noopener">${name}</a>`;
+    const logo = trackerLogo(stat.id);
+    if (!href) return `<span class="card-name">${logo}${name}</span>`;
+    return `<a class="card-name" href="${escapeHtml(href)}" target="_blank" rel="noreferrer noopener">${logo}${name}</a>`;
   }
 
   function trackerSchedule(stat) {
@@ -1515,7 +1560,7 @@
             return `
               <div class="definition-row">
                 <div class="definition-info">
-                  <strong>${escapeHtml(definition.name)}</strong>
+                  <strong>${trackerLogo(definition.id)}${escapeHtml(definition.name)}</strong>
                   <small>${escapeHtml(definition.file)} · ${escapeHtml(definition.baseUrl)}</small>
                 </div>
                 ${isNew ? '<span class="definition-badge">Nouveau</span>' : ''}
