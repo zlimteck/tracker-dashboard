@@ -329,6 +329,29 @@ const knownTrackerFields: Record<string, {
       },
     },
   },
+  tigersdl: {
+    fetchUrl: 'mybonus.php',
+    mode: 'browser',
+    byteUnit: 'decimal',
+    fields: {
+      uploadedBytes: {
+        regex: 'title=[\'"]Partager[\'"][\\s\\S]{0,180}?<font[^>]*>\\s*(?<value>[\\d\\s.,]+\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))\\s*</font>',
+        transform: 'bytes',
+      },
+      downloadedBytes: {
+        regex: 'title=[\'"][^\'"]*charg[^\'"]*[\'"][\\s\\S]{0,180}?<font[^>]*>\\s*(?<value>[\\d\\s.,]+\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))\\s*</font>',
+        transform: 'bytes',
+      },
+      seedBonus: {
+        regex: 'Votre solde[\\s\\S]{0,180}?score-points[^>]*>\\s*(?<value>[\\d\\s.,]+)',
+        transform: 'string',
+      },
+      seeding: {
+        regex: '(?:Nombres de Torrents que vous avez en seed\\s*:\\s*|title=[\'"]Seeding[\'"][\\s\\S]{0,120}?<b>\\s*)(?<value>\\d+)',
+        transform: 'integer',
+      },
+    },
+  },
   nostradamus: {
     fetchUrl: 'activity',
     mode: 'browser',
@@ -470,6 +493,24 @@ function normalizeTrackerConfigs(): TrackerConfig[] {
           'Nom d\'utilisateur ou adresse mail',
           'type="password"',
           'name="password"',
+        ]),
+      ];
+      changed = true;
+    }
+    if (tracker.id === 'tigersdl') {
+      if (tracker.login.url !== 'account-login.php') {
+        tracker.login.url = 'account-login.php';
+      }
+      tracker.login.body = {
+        username: '{{username}}',
+        password: '{{password}}',
+      };
+      tracker.login.failurePatterns = [
+        ...new Set([
+          ...tracker.login.failurePatterns,
+          'password',
+          'connexion',
+          'login',
         ]),
       ];
       changed = true;

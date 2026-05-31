@@ -44,8 +44,9 @@ Le cookie est optionnel et propre à chaque tracker : laissez le champ vide pour
 
 ## Changements récents
 
+- Ajout Tigers-DL (merci jack)
 - Ajout cookies de sessions pour tous les trackers, pour éviter les complications (captchas, antibots etc) lors des logins via le browser headless
-- Ajout crazySpirits (merci jack)
+- Ajout CrazySpirits (merci jack)
 - Ajout automatique de logos
 - Ajout vue Liste en sus de Cartes
 - Ajout "Incident connu" + note libre sur les cartes. Inspiré par LaCale vu le site en ligne mais login HS depuis le 19 mai 2026
