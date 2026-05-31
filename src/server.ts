@@ -268,6 +268,25 @@ const knownTrackerFields: Record<string, {
       },
     },
   },
+  crazyspirits: {
+    fetchUrl: '/',
+    mode: 'browser',
+    byteUnit: 'binary',
+    fields: {
+      downloadedBytes: {
+        regex: '/dl\\.png"[\\s\\S]{0,160}?<font[^>]*>\\s*(?<value>[\\d.,]+\\s*[KMGTPE]?i?B)',
+        transform: 'bytes',
+      },
+      uploadedBytes: {
+        regex: '/up\\.png"[\\s\\S]{0,160}?<font[^>]*>\\s*(?<value>[\\d.,]+\\s*[KMGTPE]?i?B)',
+        transform: 'bytes',
+      },
+      seedBonus: {
+        regex: 'Crazy Bonus\\s*<a[^>]*>\\s*(?<value>[\\d\\s.,]+)',
+        transform: 'string',
+      },
+    },
+  },
   c411: {
     fetchUrl: 'user/profile',
     mode: 'browser',

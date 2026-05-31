@@ -25,6 +25,7 @@ Export Prometheus + dashboard Grafana — endpoint `/metrics` (protégé par tok
 
 ## Changements récents
 
+- Ajout crazySpirits (merci jack)
 - Ajout automatique de logos
 - Ajout vue Liste en sus de Cartes
 - Ajout "Incident connu" + note libre sur les cartes. Inspiré par LaCale vu le site en ligne mais login HS depuis le 19 mai 2026
@@ -32,7 +33,7 @@ Export Prometheus + dashboard Grafana — endpoint `/metrics` (protégé par tok
 - Fix Nom de site cliquable sur les cartes
 - Badge "Site injoignable" + motif
 - Fix ratio C411
-- Ajout TorrentLeech (PR)
+- Ajout TorrentLeech (merci NohamR)
 - Check de joignabilité en cazs d'erreur de login
 - Ajout Seedpool
 - Export Prometheus + dashboard Grafana : endpoint `/metrics` protégé par token (`METRICS_TOKEN`) et dashboard JSON prêt à importer dans `grafana/`.
