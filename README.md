@@ -23,7 +23,21 @@ Au premier accès, l'application demande de créer le compte administrateur de l
 Export Prometheus + dashboard Grafana — endpoint `/metrics` (protégé par token via la variable d'env `METRICS_TOKEN`) exposant les stats de tous les trackers activés au format Prometheus. Dashboard Grafana JSON fourni dans `grafana/dashboard.json` (jauges de ratio, courbes upload/download par tracker, bonus points, deltas quotidiens, état OK/HS). Voir [grafana/README.md](grafana/README.md) pour l'installation.
 
 
-### Cookies de session (sites à CAPTCHA / Cloudflare)
+## Changements récents
+
+- Ajout option refresh 6 et 12h
+- Allègement restart du Docker : données < 24h servies en priorité
+- Option ProxyLess pour certains trackers (MaM notamment)
+- Cookies de sessions pour tous les trackers, pour éviter les complications (captchas, antibots etc) lors des logins via le browser headless
+- Ajout vue Lignes en sus de Cartes
+- Ajout CrazySpirits, Seedpool et Tigers-DL (merci jack)
+- Ajout "Incident connu" + note libre sur les cartes. Inspiré par LaCale vu le site en ligne mais login HS depuis le 19 mai 2026
+- Ajout TorrentLeech (merci NohamR)
+- Check de joignabilité en cas d'erreur de login
+- Export Prometheus + dashboard Grafana : endpoint `/metrics` protégé par token (`METRICS_TOKEN`) et dashboard JSON prêt à importer dans `grafana/`.
+
+
+## Cookies de session (sites à CAPTCHA / Cloudflare)
 
 Certains trackers protègent leur page de connexion par un CAPTCHA ou un challenge anti-bot (Cloudflare Turnstile, etc.). Le navigateur headless intégré ne peut pas les résoudre automatiquement, et le login échoue.
 
@@ -40,19 +54,6 @@ Quelques extensions pratiques pour exporter les cookies :
 - [Get cookies.txt LOCALLY](https://github.com/kairi003/Get-cookies.txt-LOCALLY)
 
 Le cookie est optionnel et propre à chaque tracker : laissez le champ vide pour les sites qui se connectent normalement. Un cookie de session finit par expirer (de quelques heures à plusieurs semaines selon le site) ; il suffit alors d'en recoller un frais.
-
-
-## Changements récents
-
-- Ajout option refresh 6 et 12h
-- Allègement restart du Docker : données < 24h servies en priorité
-- Option ProxyLess pour certains trackers (MaM notamment)
-- Cookies de sessions pour tous les trackers, pour éviter les complications (captchas, antibots etc) lors des logins via le browser headless
-- Ajout CrazySpirits, Seedpool et Tigers-DL (merci jack)
-- Ajout "Incident connu" + note libre sur les cartes. Inspiré par LaCale vu le site en ligne mais login HS depuis le 19 mai 2026
-- Ajout TorrentLeech (merci NohamR)
-- Check de joignabilité en cas d'erreur de login
-- Export Prometheus + dashboard Grafana : endpoint `/metrics` protégé par token (`METRICS_TOKEN`) et dashboard JSON prêt à importer dans `grafana/`.
 
 
 ## Captures d'écran
