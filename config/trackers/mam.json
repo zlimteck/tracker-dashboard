@@ -24,7 +24,8 @@
       "name=\"password\"",
       "name='password'",
       "loginIssueBlock"
-    ]
+    ],
+    "cookieOnly": true
   },
   "fetch": {
     "url": "u/",

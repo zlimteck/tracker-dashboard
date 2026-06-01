@@ -26,6 +26,12 @@ export interface LoginConfig {
    * Vérifiées après le login ET après chaque fetch (session expirée).
    */
   failurePatterns: string[];
+  /**
+   * Si true : ne JAMAIS soumettre le formulaire de login automatiquement.
+   * On s'appuie uniquement sur le cookie de session injecte. Indispensable pour
+   * les sites qui plafonnent/bloquent les logins automatises (ex: MyAnonamouse).
+   */
+  cookieOnly?: boolean;
 }
 
 export interface FieldExtractor {

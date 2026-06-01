@@ -717,6 +717,9 @@ function normalizeTrackerConfigs(): TrackerConfig[] {
         'name=\'password\'',
         'loginIssueBlock',
       ];
+      // MAM plafonne les sessions et bloque le login automatise -> JAMAIS de login
+      // formulaire, uniquement le cookie de session (mam_id). Evite de bloquer le compte.
+      tracker.login.cookieOnly = true;
       changed = true;
     }
     if (tracker.id === 'milkie') {

@@ -474,6 +474,14 @@ async function ensureLoggedIn(
   const html = await safeContent(page);
   if (!hasFailurePattern(html, tracker.login.failurePatterns)) return;
 
+  // Mode cookie uniquement : on ne soumet JAMAIS le formulaire (sinon, sur des sites
+  // comme MyAnonamouse, chaque tentative cree une session et finit par bloquer le compte).
+  // Si le cookie injecte ne suffit pas, on laisse l'echec d'auth etre signale en aval.
+  if (tracker.login.cookieOnly) {
+    console.warn(`[${tracker.name}] cookieOnly : session non valide et aucun login auto - fournir un cookie de session valide`);
+    return;
+  }
+
   const loginUrl = resolveUrl(tracker.baseUrl, tracker.login.url);
   // 'commit' = on attend juste les headers HTTP, puis les waits explicites ci-dessous
   // s'occupent du DOM (plus robuste pour les sites lourds en JS / proxy lent)
