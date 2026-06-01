@@ -1897,18 +1897,20 @@ export async function start(): Promise<void> {
 
   await refresh(trackers);
 
-  // Recuperation automatique des logos au demarrage (non bloquant, FORCE : re-fetch
-  // tous les favicons a chaque boot, pour TOUTES les definitions du dossier trackers
-  // (actives ou non). Les logos manuels dans config/logos/ restent prioritaires et
-  // intacts, et un echec de re-fetch ne supprime pas le logo existant.
-  refreshAllLogos(listTrackerDefinitionFiles(), true)
-    .then(results => {
-      const missing = results.filter(r => !r.ok).map(r => r.id);
-      if (missing.length > 0) {
-        console.log(`[Logos] Sans favicon auto (deposer un fichier dans config/logos/<id>.png) : ${missing.join(', ')}`);
-      }
-    })
-    .catch(() => { /* best-effort */ });
+  // Recuperation des logos au demarrage (non bloquant). NON force : on ne telecharge
+  // que les favicons manquants -> boot leger meme avec beaucoup de trackers. Le bouton
+  // "Rafraichir les logos" permet un refetch force a la demande. On laisse un petit
+  // delai pour ne pas concurrencer le refresh des stats au tout debut.
+  setTimeout(() => {
+    refreshAllLogos(listTrackerDefinitionFiles(), false)
+      .then(results => {
+        const missing = results.filter(r => !r.ok).map(r => r.id);
+        if (missing.length > 0) {
+          console.log(`[Logos] Sans favicon auto (deposer un fichier dans config/logos/<id>.png) : ${missing.join(', ')}`);
+        }
+      })
+      .catch(() => { /* best-effort */ });
+  }, 30_000);
 
   startScheduler();
 }

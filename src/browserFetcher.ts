@@ -635,6 +635,11 @@ export async function fetchWithBrowser(
     return { html: await safeContent(page), url: page.url(), authConfirmed };
   } finally {
     await page.close().catch(() => {});
+    // Fermer le contexte (= le process Chromium) apres chaque fetch. Sinon, avec
+    // beaucoup de trackers en mode navigateur, les contextes s'accumulent en memoire
+    // (1 Chromium par tracker) et l'app rame. Le profil persiste sur disque (cookies
+    // conserves), on le relance juste au prochain cycle. Max simultane = REFRESH_CONCURRENCY.
+    await closeBrowserSession(tracker.id).catch(() => {});
   }
 }
 
