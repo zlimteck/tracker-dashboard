@@ -576,13 +576,14 @@ function normalizeTrackerConfigs(): TrackerConfig[] {
         password: '{{password}}',
         remember: 'on',
       };
+      // Jeu CURÉ et fiable : ces marqueurs n'apparaissent QUE sur la page de login
+      // UNIT3D, jamais sur une page connectée. On ECRASE (pas de merge) pour eliminer
+      // les patterns trop larges venant des JSON (ex: "Bejelentkezés"/"Se connecter"
+      // qui figurent dans un menu meme connecte -> faux "non authentifie").
       tracker.login.failurePatterns = [
-        ...new Set([
-          ...tracker.login.failurePatterns,
-          'auth-form__form',
-          'type="password"',
-          'Se connecter',
-        ]),
+        'auth-form__form',
+        'type="password"',
+        'name="password"',
       ];
       changed = true;
     }
