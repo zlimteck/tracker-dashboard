@@ -542,19 +542,21 @@ async function ensureLoggedIn(
   }
   await page.waitForTimeout(250);
 
-  const invalidFields = await page.locator('input:invalid').evaluateAll(inputs => inputs
+  const loginFieldNames = Object.keys(tracker.login.body).map(name => name.toLowerCase());
+  const invalidFields = await page.locator('input:invalid').evaluateAll((inputs, expectedNames) => inputs
     .filter(input => {
       const el = input as HTMLInputElement;
       const style = window.getComputedStyle(el);
       const visible = style.visibility !== 'hidden' &&
         style.display !== 'none' &&
         el.getClientRects().length > 0;
-      return visible && !el.disabled;
+      const fieldName = (el.name || el.id || el.type || '').toLowerCase();
+      return visible && !el.disabled && expectedNames.includes(fieldName);
     })
     .map(input => {
       const el = input as HTMLInputElement;
       return el.name || el.id || el.type || 'input';
-    })).catch(() => []);
+    }), loginFieldNames).catch(() => []);
   if (invalidFields.length > 0) {
     throw new Error(`Formulaire login invalide (${invalidFields.join(', ')}) - verifier le format des identifiants`);
   }
