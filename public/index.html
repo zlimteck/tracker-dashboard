@@ -1404,7 +1404,9 @@
     const bottomCells = ratioless
       ? `${statCell('Points', [formatCount(f.points), 'pts'], '', '')}
          ${statCell('Taux',   [formatCount(f.rate),   'pts/jour'], '', 'col-bonus')}`
-      : `${statCell('Seeding', formatCount(f.seeding),   '', '')}
+      : `${hasStatValue(f.seedTimeDays)
+          ? statCell('Seed time', [formatCount(f.seedTimeDays), 'j'], '', '')
+          : statCell('Seeding', formatCount(f.seeding), '', '')}
          ${statCell('Bonus',   formatCount(f.seedBonus), '', '')}`;
 
     return `

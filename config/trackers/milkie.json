@@ -1,0 +1,40 @@
+{
+  "id": "milkie",
+  "name": "Milkie",
+  "baseUrl": "https://milkie.cc",
+  "enabled": false,
+  "login": {
+    "url": "auth/signin",
+    "method": "POST",
+    "contentType": "form",
+    "body": {
+      "email": "{{username}}",
+      "password": "{{password}}"
+    },
+    "failurePatterns": [
+      "/auth/signin",
+      "type=\"password\"",
+      "type='password'",
+      "name=\"password\"",
+      "name='password'"
+    ]
+  },
+  "fetch": {
+    "url": "browse",
+    "mode": "browser",
+    "responseType": "html",
+    "fields": {
+      "uploadedBytes": {
+        "regex": "keyboard_arrow_up[\\s\\S]{0,140}?(?<value>[\\d\\s.,]+\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))",
+        "transform": "bytes"
+      },
+      "downloadedBytes": {
+        "regex": "keyboard_arrow_down[\\s\\S]{0,140}?(?<value>[\\d\\s.,]+\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))",
+        "transform": "bytes"
+      }
+    }
+  },
+  "dashboard": {
+    "byteUnit": "binary"
+  }
+}

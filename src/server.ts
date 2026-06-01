@@ -352,6 +352,61 @@ const knownTrackerFields: Record<string, {
       },
     },
   },
+  mam: {
+    fetchUrl: 'u/',
+    byteUnit: 'binary',
+    fields: {
+      uploadedBytes: {
+        regex: 'Uploaded[\\s\\S]{0,160}?(?<value>[\\d\\s.,]+\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))',
+        transform: 'bytes',
+      },
+      downloadedBytes: {
+        regex: 'Downloaded[\\s\\S]{0,160}?(?<value>[\\d\\s.,]+\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))',
+        transform: 'bytes',
+      },
+      ratio: {
+        regex: 'Share ratio[\\s\\S]{0,160}?(?<value>\\d[\\d\\s.,]*)',
+        transform: 'number',
+      },
+      seedBonus: {
+        regex: 'Bonus[\\s\\S]{0,160}?(?<value>[\\d\\s.,]+)',
+        transform: 'string',
+      },
+    },
+  },
+  milkie: {
+    fetchUrl: 'browse',
+    mode: 'browser',
+    byteUnit: 'binary',
+    fields: {
+      uploadedBytes: {
+        regex: 'keyboard_arrow_up[\\s\\S]{0,140}?(?<value>[\\d\\s.,]+\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))',
+        transform: 'bytes',
+      },
+      downloadedBytes: {
+        regex: 'keyboard_arrow_down[\\s\\S]{0,140}?(?<value>[\\d\\s.,]+\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))',
+        transform: 'bytes',
+      },
+    },
+  },
+  speedapp: {
+    fetchUrl: 'profile',
+    byteUnit: 'decimal',
+    fields: {
+      uploadedBytes: {
+        regex: 'Uploaded[\\s\\S]{0,120}?<dd[^>]*>\\s*(?<value>[\\d\\s.,]+\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))\\s*</dd>',
+        transform: 'bytes',
+      },
+      downloadedBytes: {
+        regex: 'Downloaded[\\s\\S]{0,120}?<dd[^>]*>\\s*(?<value>[\\d\\s.,]+\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))\\s*</dd>',
+        transform: 'bytes',
+      },
+      seedTimeDays: {
+        regex: 'Seed time[\\s\\S]{0,120}?<dd[^>]*>\\s*(?<value>\\d[\\d\\s.,]*)\\s*days',
+        transform: 'number',
+      },
+    },
+  },
   nostradamus: {
     fetchUrl: 'activity',
     mode: 'browser',
@@ -511,6 +566,69 @@ function normalizeTrackerConfigs(): TrackerConfig[] {
         'type=\'password\'',
         'name="password"',
         'name=\'password\'',
+      ];
+      changed = true;
+    }
+    if (tracker.id === 'mam') {
+      if (tracker.login.url !== 'takelogin.php') {
+        tracker.login.url = 'takelogin.php';
+      }
+      tracker.login.preStep = {
+        url: 'login.php?returnto=%2Fu%2F',
+        extract: {},
+        includeHiddenInputs: true,
+      };
+      tracker.login.body = {
+        email: '{{username}}',
+        password: '{{password}}',
+        rememberMe: 'yes',
+        returnto: '/u/',
+      };
+      tracker.login.failurePatterns = [
+        'Not logged in!',
+        'Login | My Anonamouse',
+        'name="password"',
+        'name=\'password\'',
+        'loginIssueBlock',
+      ];
+      changed = true;
+    }
+    if (tracker.id === 'milkie') {
+      if (tracker.login.url !== 'auth/signin') {
+        tracker.login.url = 'auth/signin';
+      }
+      tracker.login.body = {
+        email: '{{username}}',
+        password: '{{password}}',
+      };
+      tracker.login.failurePatterns = [
+        '/auth/signin',
+        'type="password"',
+        'type=\'password\'',
+        'name="password"',
+        'name=\'password\'',
+      ];
+      changed = true;
+    }
+    if (tracker.id === 'speedapp') {
+      if (tracker.login.url !== 'fr/connexion?locale=fr') {
+        tracker.login.url = 'fr/connexion?locale=fr';
+      }
+      tracker.login.preStep = {
+        url: 'fr/connexion?locale=fr',
+        extract: {},
+        includeHiddenInputs: true,
+      };
+      tracker.login.body = {
+        username: '{{username}}',
+        password: '{{password}}',
+        _remember_me: 'on',
+      };
+      tracker.login.failurePatterns = [
+        'Connexion | SpeedApp',
+        'name="username"',
+        'name="password"',
+        'name=\'_csrf_token\'',
       ];
       changed = true;
     }
@@ -1070,6 +1188,7 @@ function renderPrometheusMetrics(stats: TrackerStats[]): string {
         return up - down;
       } },
     { name: 'tracker_seed_bonus',     help: 'Bonus points', type: 'gauge', pick: s => toNumber(s.fields.seedBonus) },
+    { name: 'tracker_seed_time_days', help: 'Average seed time in days', type: 'gauge', pick: s => toNumber(s.fields.seedTimeDays) },
     { name: 'tracker_seeding_count',  help: 'Active seeding torrents', type: 'gauge', pick: s => toNumber(s.fields.seeding) },
     { name: 'tracker_leeching_count', help: 'Active leeching torrents', type: 'gauge', pick: s => toNumber(s.fields.leeching) },
     { name: 'tracker_points',         help: 'Points (ratioless trackers)', type: 'gauge', pick: s => toNumber(s.fields.points) },

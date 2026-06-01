@@ -44,6 +44,7 @@ Le cookie est optionnel et propre à chaque tracker : laissez le champ vide pour
 
 ## Changements récents
 
+- Ajout MAM, Milkie, SpeedApp
 - Ajout Tigers-DL (merci jack)
 - Ajout cookies de sessions pour tous les trackers, pour éviter les complications (captchas, antibots etc) lors des logins via le browser headless
 - Ajout CrazySpirits (merci jack)

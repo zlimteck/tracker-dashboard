@@ -268,7 +268,7 @@ function hasFailurePattern(text: string, patterns: string[]): boolean {
 }
 
 function isLoginPath(pathname: string): boolean {
-  return pathname.includes('login') || pathname.includes('sign-in');
+  return pathname.includes('login') || pathname.includes('sign-in') || pathname.includes('signin');
 }
 
 function isAnubisChallenge(html: string): boolean {
@@ -348,6 +348,21 @@ async function waitForTurnstile(page: Page): Promise<void> {
  * une coquille "non connecte" avant hydratation (cas TR4KER).
  */
 async function waitForTrackerContent(tracker: TrackerConfig, page: Page): Promise<boolean> {
+  if (tracker.id === 'milkie') {
+    try {
+      await page.waitForFunction(
+        () => {
+          const text = document.body?.innerText ?? '';
+          return text.includes('keyboard_arrow_up') && text.includes('keyboard_arrow_down');
+        },
+        null,
+        { timeout: 20_000 },
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }
   if (tracker.id === 'tigersdl') {
     try {
       await page.waitForFunction(
@@ -376,6 +391,34 @@ async function waitForTrackerContent(tracker: TrackerConfig, page: Page): Promis
     return true;
   } catch {
     return false;
+  }
+}
+
+async function revealMilkieStats(page: Page): Promise<void> {
+  const hasStats = async () => page.evaluate(() => {
+    const text = document.body?.innerText ?? '';
+    return text.includes('keyboard_arrow_up') && text.includes('keyboard_arrow_down');
+  }).catch(() => false);
+
+  await page.waitForFunction(
+    () => {
+      const text = document.body?.innerText ?? '';
+      return text.includes('Browse') || text.includes('Torrents') || Boolean(document.querySelector('app-root')?.children.length);
+    },
+    null,
+    { timeout: 30_000 },
+  ).catch(() => {});
+
+  if (await hasStats()) return;
+
+  for (const selector of ['mat-toolbar button', 'button.mat-menu-trigger', 'button[aria-haspopup="menu"]', 'button']) {
+    const buttons = page.locator(selector);
+    const count = await buttons.count().catch(() => 0);
+    for (let i = count - 1; i >= 0; i -= 1) {
+      await buttons.nth(i).click({ timeout: 1500 }).catch(() => {});
+      await page.waitForTimeout(300);
+      if (await hasStats()) return;
+    }
   }
 }
 
@@ -532,6 +575,9 @@ export async function fetchWithBrowser(
     }
     if (tracker.id === 'c411') {
       await page.getByText(/Envoy|Ratio|T[ée]l[ée]charg/i).first().waitFor({ timeout: 20_000 }).catch(() => {});
+    }
+    if (tracker.id === 'milkie') {
+      await revealMilkieStats(page);
     }
     const authConfirmed = await waitForTrackerContent(tracker, page);
     return { html: await safeContent(page), url: page.url(), authConfirmed };

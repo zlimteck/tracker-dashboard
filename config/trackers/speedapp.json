@@ -1,0 +1,48 @@
+{
+  "id": "speedapp",
+  "name": "SpeedApp",
+  "baseUrl": "https://speedapp.io",
+  "enabled": false,
+  "login": {
+    "url": "fr/connexion?locale=fr",
+    "method": "POST",
+    "contentType": "form",
+    "preStep": {
+      "url": "fr/connexion?locale=fr",
+      "extract": {},
+      "includeHiddenInputs": true
+    },
+    "body": {
+      "username": "{{username}}",
+      "password": "{{password}}",
+      "_remember_me": "on"
+    },
+    "failurePatterns": [
+      "Connexion | SpeedApp",
+      "name=\"username\"",
+      "name=\"password\"",
+      "name='_csrf_token'"
+    ]
+  },
+  "fetch": {
+    "url": "profile",
+    "responseType": "html",
+    "fields": {
+      "uploadedBytes": {
+        "regex": "Uploaded[\\s\\S]{0,120}?<dd[^>]*>\\s*(?<value>[\\d\\s.,]+\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))\\s*</dd>",
+        "transform": "bytes"
+      },
+      "downloadedBytes": {
+        "regex": "Downloaded[\\s\\S]{0,120}?<dd[^>]*>\\s*(?<value>[\\d\\s.,]+\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))\\s*</dd>",
+        "transform": "bytes"
+      },
+      "seedTimeDays": {
+        "regex": "Seed time[\\s\\S]{0,120}?<dd[^>]*>\\s*(?<value>\\d[\\d\\s.,]*)\\s*days",
+        "transform": "number"
+      }
+    }
+  },
+  "dashboard": {
+    "byteUnit": "decimal"
+  }
+}

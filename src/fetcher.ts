@@ -211,7 +211,7 @@ function hasBrowserAuthFailure(
 ): string | null {
   const pathName = new URL(url).pathname;
   if (tracker.id === 'yggreborn' && pathName.startsWith('/account')) return null;
-  if (pathName.includes('login') || pathName.includes('sign-in')) return 'login-url';
+  if (pathName.includes('login') || pathName.includes('sign-in') || pathName.includes('signin')) return 'login-url';
   return hasFailurePattern(html, tracker.login.failurePatterns);
 }
 

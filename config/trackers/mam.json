@@ -1,0 +1,54 @@
+{
+  "id": "mam",
+  "name": "MAM",
+  "baseUrl": "https://www.myanonamouse.net",
+  "enabled": false,
+  "login": {
+    "url": "takelogin.php",
+    "method": "POST",
+    "contentType": "form",
+    "preStep": {
+      "url": "login.php?returnto=%2Fu%2F",
+      "extract": {},
+      "includeHiddenInputs": true
+    },
+    "body": {
+      "email": "{{username}}",
+      "password": "{{password}}",
+      "rememberMe": "yes",
+      "returnto": "/u/"
+    },
+    "failurePatterns": [
+      "Not logged in!",
+      "Login | My Anonamouse",
+      "name=\"password\"",
+      "name='password'",
+      "loginIssueBlock"
+    ]
+  },
+  "fetch": {
+    "url": "u/",
+    "responseType": "html",
+    "fields": {
+      "uploadedBytes": {
+        "regex": "Uploaded[\\s\\S]{0,160}?(?<value>[\\d\\s.,]+\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))",
+        "transform": "bytes"
+      },
+      "downloadedBytes": {
+        "regex": "Downloaded[\\s\\S]{0,160}?(?<value>[\\d\\s.,]+\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))",
+        "transform": "bytes"
+      },
+      "ratio": {
+        "regex": "Share ratio[\\s\\S]{0,160}?(?<value>\\d[\\d\\s.,]*)",
+        "transform": "number"
+      },
+      "seedBonus": {
+        "regex": "Bonus[\\s\\S]{0,160}?(?<value>[\\d\\s.,]+)",
+        "transform": "string"
+      }
+    }
+  },
+  "dashboard": {
+    "byteUnit": "binary"
+  }
+}
