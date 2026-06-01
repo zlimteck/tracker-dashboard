@@ -21,7 +21,8 @@ jobs:
 
       # Auto-approbation des patches UNIQUEMENT — satisfait la regle "Require approvals"
       # de la branch protection. Ne contourne PAS les status checks : la PR ne mergera
-      # que si Node build + Docker/CVE scan passent au vert.
+      # que si les checks requis passent au vert. Le scan CVE PR est informatif,
+      # le suivi securite bloquant vit dans le scan planifie / Security.
       - name: Auto-approve patch updates only
         if: steps.meta.outputs.update-type == 'version-update:semver-patch'
         run: |
