@@ -706,6 +706,14 @@
       color: var(--muted);
       background: color-mix(in srgb, var(--border) 60%, transparent);
     }
+    .definition-badge-cookie {
+      color: var(--purple);
+      background: color-mix(in srgb, var(--purple) 16%, transparent);
+      width: auto;
+      margin-left: 6px;
+      vertical-align: middle;
+      cursor: help;
+    }
     .definition-new-slot {
       display: block;
       min-width: 0;
@@ -1666,17 +1674,19 @@
             const isEnabled = Boolean(definition.enabled);
             const credential = credentials.get(definition.id) || {};
             const safeId = escapeHtml(definition.id);
+            const cookieOnly = Boolean(credential.cookieOnly);
+            const statusBadge = cookieOnly
+              ? `<span class="credential-badge ${credential.hasCookie ? 'credential-ok' : 'credential-missing'}">${credential.hasCookie ? 'Cookie OK' : 'Cookie requis'}</span>`
+              : `<span class="credential-badge ${credential.hasPassword ? 'credential-ok' : 'credential-missing'}">${credential.hasPassword ? 'Configuré' : 'Manquant'}</span>`;
             return `
               <div class="definition-row">
                 <div class="definition-info">
-                  <strong>${trackerLogo(definition.id)}${escapeHtml(definition.name)}</strong>
+                  <strong>${trackerLogo(definition.id)}${escapeHtml(definition.name)}${cookieOnly ? ' <span class="definition-badge definition-badge-cookie" title="Login automatique désactivé : ce tracker nécessite un cookie de session (CAPTCHA/anti-bot). Renseigne-le dans Options avancées.">Cookie uniquement</span>' : ''}</strong>
                   <small>${escapeHtml(definition.file)} · <a href="${escapeHtml(definition.baseUrl)}" target="_blank" rel="noreferrer noopener">${escapeHtml(definition.baseUrl)}</a></small>
                 </div>
                 ${isNew ? '<span class="definition-badge">Nouveau</span>' : '<span class="definition-new-slot"></span>'}
                 <span class="definition-badge ${isEnabled ? '' : 'definition-badge-muted'}">${isEnabled ? 'Actif' : 'Disponible'}</span>
-                <span class="credential-badge ${credential.hasPassword ? 'credential-ok' : 'credential-missing'}">
-                  ${credential.hasPassword ? 'Configuré' : 'Manquant'}
-                </span>
+                ${statusBadge}
                 <div class="tracker-field">
                   <label>Utilisateur</label>
                   <input class="tracker-input" id="credential-user-${safeId}" value="${escapeHtml(credential.username || '')}" autocomplete="off">

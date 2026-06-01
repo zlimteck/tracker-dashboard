@@ -26,7 +26,8 @@
       "cf-turnstile",
       "g-recaptcha",
       "grecaptcha"
-    ]
+    ],
+    "cookieOnly": true
   },
   "fetch": {
     "url": "/",

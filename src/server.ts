@@ -235,6 +235,7 @@ const knownTrackerFields: Record<string, {
   },
   seedpool: {
     fetchUrl: '/',
+    mode: 'browser',
     byteUnit: 'binary',
     fields: unit3dFields,
   },
@@ -558,6 +559,18 @@ const knownTrackerFields: Record<string, {
   },
 };
 
+// Trackers dont le login ne peut pas etre automatise (CAPTCHA, Cloudflare Turnstile,
+// plafond de sessions...) : on force le mode "cookie uniquement".
+const COOKIE_ONLY_TRACKERS = new Set([
+  'mam',          // plafond de sessions + login bloque
+  'seedpool',     // CAPTCHA au login (UNIT3D)
+  'bitporn',      // Cloudflare
+  'exoticaz',     // CAPTCHA
+  'crazyspirits', // Cloudflare Turnstile
+  'tr4ker',       // Cloudflare + login SPA
+  'yggreborn',    // Cloudflare Turnstile
+]);
+
 function normalizeTrackerConfigs(): TrackerConfig[] {
   const trackers = loadTrackerConfigsFromDb();
   for (const tracker of trackers) {
@@ -717,8 +730,12 @@ function normalizeTrackerConfigs(): TrackerConfig[] {
         'name=\'password\'',
         'loginIssueBlock',
       ];
-      // MAM plafonne les sessions et bloque le login automatise -> JAMAIS de login
-      // formulaire, uniquement le cookie de session (mam_id). Evite de bloquer le compte.
+      changed = true;
+    }
+    // Trackers a CAPTCHA / Cloudflare Turnstile / anti-bot : le login formulaire est
+    // impossible a automatiser -> cookie de session uniquement (jamais de soumission
+    // de formulaire). Force le flag meme si la config en base est ancienne.
+    if (COOKIE_ONLY_TRACKERS.has(tracker.id) && !tracker.login.cookieOnly) {
       tracker.login.cookieOnly = true;
       changed = true;
     }
@@ -1692,6 +1709,7 @@ export async function start(): Promise<void> {
             username: credentials.get(definition.id)?.username ?? '',
             hasPassword: credentials.get(definition.id)?.hasPassword ?? false,
             hasCookie: hasTrackerCookie(definition.id),
+            cookieOnly: Boolean(tracker?.login?.cookieOnly ?? loadTrackerDefinitionFile(definition.id)?.login?.cookieOnly),
             updatedAt: credentials.get(definition.id)?.updatedAt ?? null,
           };
         })

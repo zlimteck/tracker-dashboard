@@ -28,7 +28,8 @@
       "name=\"password\"",
       "These credentials do not match",
       "Bejelentkezés"
-    ]
+    ],
+    "cookieOnly": true
   },
   "fetch": {
     "url": "/",

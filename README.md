@@ -25,6 +25,7 @@ Export Prometheus + dashboard Grafana — endpoint `/metrics` (protégé par tok
 
 ## Changements récents
 
+- Meilleure identification des trackers en cookie only (captchas, Cloudflare...)
 - Ajout option refresh 6 et 12h
 - Allègement restart du Docker : données < 24h servies en priorité
 - Option ProxyLess pour certains trackers (MaM notamment)
