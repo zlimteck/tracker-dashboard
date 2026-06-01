@@ -21,7 +21,13 @@ import { closeBrowserSession, closeBrowserSessions, fetchWithBrowser } from './b
 
 function parseBytes(raw: unknown): number {
   if (typeof raw === 'number') return raw;
-  const s = String(raw).trim().replace(',', '.');
+  // Normaliser les espaces insecables encodes en entites HTML (&nbsp; &#160; &#xa0;)
+  // et le caractere   -> espace, sinon le nombre et l'unite restent colles.
+  const s = String(raw)
+    .replace(/&nbsp;|&#160;|&#xa0;/gi, ' ')
+    .replace(/ /g, ' ')
+    .trim()
+    .replace(',', '.');
   const m = s.match(/([\d\s.\u202f]+)\s*([KMGTPE](?:i?B|io|o)|B|o)/i);
   if (!m) return parseFloat(s) || 0;
   const n = parseFloat(m[1].replace(/[\s\u202f]/g, ''));

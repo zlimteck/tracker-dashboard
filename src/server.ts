@@ -251,17 +251,20 @@ const knownTrackerFields: Record<string, {
       // BitPorn enrobe la valeur dans un <a href=".../uploads"> et utilise un espace
       // insecable ( ) -> on ancre sur la classe et on capture juste nombre+unite.
       uploadedBytes: {
-        regex: 'ratio-bar__uploaded[\\s\\S]{0,260}?(?<value>\\d[\\d.,\\s\\u00a0]*[KMGTPE]i?B)',
+        regex: 'ratio-bar__uploaded[\\s\\S]{0,260}?(?<value>\\d[\\d.,]*(?:&nbsp;|&#160;|&#xa0;|[\\s\\u00a0])*[KMGTPE]i?B)',
         transform: 'bytes',
       },
       downloadedBytes: {
-        regex: 'ratio-bar__downloaded[\\s\\S]{0,260}?(?<value>\\d[\\d.,\\s\\u00a0]*[KMGTPE]i?B)',
+        regex: 'ratio-bar__downloaded[\\s\\S]{0,260}?(?<value>\\d[\\d.,]*(?:&nbsp;|&#160;|&#xa0;|[\\s\\u00a0])*[KMGTPE]i?B)',
         transform: 'bytes',
       },
       ratio: unit3dFields.ratio,
       seeding: unit3dFields.seeding,
       seedBonus: unit3dFields.seedBonus,
-      bufferBytes: unit3dFields.bufferBytes,
+      bufferBytes: {
+        regex: 'ratio-bar__buffer[\\s\\S]{0,260}?(?<value>\\d[\\d.,]*(?:&nbsp;|&#160;|&#xa0;|[\\s\\u00a0])*[KMGTPE]i?B)',
+        transform: 'bytes',
+      },
     },
   },
   exoticaz: {
