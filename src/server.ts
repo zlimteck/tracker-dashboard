@@ -238,6 +238,11 @@ const knownTrackerFields: Record<string, {
     byteUnit: 'binary',
     fields: unit3dFields,
   },
+  sextorrent: {
+    fetchUrl: '/',
+    byteUnit: 'binary',
+    fields: unit3dFields,
+  },
   bitporn: {
     fetchUrl: '/',
     mode: 'browser',
@@ -555,7 +560,7 @@ function normalizeTrackerConfigs(): TrackerConfig[] {
   for (const tracker of trackers) {
     let changed = false;
     const isHdOnlyLikeTracker = ['hdonly', 'hdforever'].includes(tracker.id);
-    const isUnit3dTracker = ['theoldschool', 'generationfree', 'teamflix', 'g3mini', 'seedpool', 'bitporn'].includes(tracker.id);
+    const isUnit3dTracker = ['theoldschool', 'generationfree', 'teamflix', 'g3mini', 'seedpool', 'bitporn', 'sextorrent'].includes(tracker.id);
     if (tracker.id === 'hdonly' && tracker.login.failurePatterns.includes('login.php')) {
       tracker.login.failurePatterns = tracker.login.failurePatterns
         .filter(pattern => pattern !== 'login.php');
