@@ -44,20 +44,16 @@ Le cookie est optionnel et propre à chaque tracker : laissez le champ vide pour
 
 ## Changements récents
 
-- Ajout MAM, Milkie, SpeedApp
-- Ajout Tigers-DL (merci jack)
 - Ajout cookies de sessions pour tous les trackers, pour éviter les complications (captchas, antibots etc) lors des logins via le browser headless
-- Ajout CrazySpirits (merci jack)
+- Ajout CrazySpirits, Seedpool et Tigers-DL (merci jack)
 - Ajout automatique de logos
 - Ajout vue Liste en sus de Cartes
 - Ajout "Incident connu" + note libre sur les cartes. Inspiré par LaCale vu le site en ligne mais login HS depuis le 19 mai 2026
 - Ajout de proxy secondaire, par site
-- Fix Nom de site cliquable sur les cartes
 - Badge "Site injoignable" + motif
 - Fix ratio C411
 - Ajout TorrentLeech (merci NohamR)
-- Check de joignabilité en cazs d'erreur de login
-- Ajout Seedpool
+- Check de joignabilité en cas d'erreur de login
 - Export Prometheus + dashboard Grafana : endpoint `/metrics` protégé par token (`METRICS_TOKEN`) et dashboard JSON prêt à importer dans `grafana/`.
 
 

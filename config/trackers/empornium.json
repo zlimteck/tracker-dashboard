@@ -15,8 +15,7 @@
     "body": {
       "username": "{{username}}",
       "password": "{{password}}",
-      "keeploggedin": "1",
-      "submit": "login"
+      "keeploggedin": "1"
     },
     "failurePatterns": [
       "Login ::",
@@ -26,6 +25,7 @@
   },
   "fetch": {
     "url": "index.php",
+    "mode": "browser",
     "responseType": "html",
     "fields": {
       "seedBonus": {

@@ -196,6 +196,19 @@ const knownTrackerFields: Record<string, {
     byteUnit: 'binary',
     fields: unit3dFields,
   },
+  bitporn: {
+    fetchUrl: '/',
+    mode: 'browser',
+    byteUnit: 'binary',
+    fields: {
+      uploadedBytes: unit3dFields.uploadedBytes,
+      downloadedBytes: unit3dFields.downloadedBytes,
+      ratio: unit3dFields.ratio,
+      seeding: unit3dFields.seeding,
+      seedBonus: unit3dFields.seedBonus,
+      bufferBytes: unit3dFields.bufferBytes,
+    },
+  },
   abnormal: {
     fetchUrl: '/',
     byteUnit: 'decimal',
@@ -432,16 +445,19 @@ const knownTrackerFields: Record<string, {
   },
   kufirc: {
     fetchUrl: 'index.php',
+    mode: 'browser',
     byteUnit: 'binary',
     fields: gazelleStatsFields,
   },
   happyfappy: {
     fetchUrl: 'index.php',
+    mode: 'browser',
     byteUnit: 'binary',
     fields: gazelleStatsFields,
   },
   empornium: {
     fetchUrl: 'index.php',
+    mode: 'browser',
     byteUnit: 'binary',
     fields: gazelleStatsFields,
   },
@@ -476,7 +492,7 @@ function normalizeTrackerConfigs(): TrackerConfig[] {
   for (const tracker of trackers) {
     let changed = false;
     const isHdOnlyLikeTracker = ['hdonly', 'hdforever'].includes(tracker.id);
-    const isUnit3dTracker = ['theoldschool', 'generationfree', 'teamflix', 'g3mini', 'seedpool'].includes(tracker.id);
+    const isUnit3dTracker = ['theoldschool', 'generationfree', 'teamflix', 'g3mini', 'seedpool', 'bitporn'].includes(tracker.id);
     if (tracker.id === 'hdonly' && tracker.login.failurePatterns.includes('login.php')) {
       tracker.login.failurePatterns = tracker.login.failurePatterns
         .filter(pattern => pattern !== 'login.php');
@@ -683,7 +699,6 @@ function normalizeTrackerConfigs(): TrackerConfig[] {
         username: '{{username}}',
         password: '{{password}}',
         keeploggedin: '1',
-        submit: 'login',
       };
       tracker.login.failurePatterns = [
         'Login ::',

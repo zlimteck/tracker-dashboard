@@ -378,6 +378,21 @@ async function waitForTrackerContent(tracker: TrackerConfig, page: Page): Promis
       return false;
     }
   }
+  if (['kufirc', 'happyfappy', 'empornium'].includes(tracker.id)) {
+    try {
+      await page.waitForFunction(
+        () => {
+          const text = document.body?.innerText ?? '';
+          return text.includes('Credits') && text.includes('Up') && text.includes('Down') && text.includes('Ratio');
+        },
+        null,
+        { timeout: 20_000 },
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }
   if (tracker.id === 'tigersdl') {
     try {
       await page.waitForFunction(
@@ -514,6 +529,16 @@ async function ensureLoggedIn(
 
   await waitForLiveView(page);
   await waitForTurnstile(page);
+  if (['kufirc', 'happyfappy', 'empornium'].includes(tracker.id)) {
+    await page.waitForFunction(
+      () => {
+        const cinfo = document.querySelector<HTMLInputElement>('#cinfo, input[name="cinfo"]');
+        return !cinfo || (cinfo.value.length > 0 && cinfo.value !== 'auth');
+      },
+      null,
+      { timeout: 5_000 },
+    ).catch(() => {});
+  }
   await page.waitForTimeout(250);
 
   const invalidFields = await page.locator('input:invalid').evaluateAll(inputs => inputs.map(input => {
