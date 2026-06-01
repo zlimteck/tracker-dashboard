@@ -36,11 +36,11 @@
     "responseType": "html",
     "fields": {
       "uploadedBytes": {
-        "regex": "ratio-bar__uploaded[\\s\\S]*?<i[^>]*>[\\s\\S]*?</i>\\s*(?<value>[\\d\\s.,]+\\s*[KMGTPE]?i?B)",
+        "regex": "ratio-bar__uploaded[\\s\\S]{0,260}?(?<value>\\d[\\d.,\\s\\u00a0]*[KMGTPE]i?B)",
         "transform": "bytes"
       },
       "downloadedBytes": {
-        "regex": "ratio-bar__downloaded[\\s\\S]*?<i[^>]*>[\\s\\S]*?</i>\\s*(?<value>[\\d\\s.,]+\\s*[KMGTPE]?i?B)",
+        "regex": "ratio-bar__downloaded[\\s\\S]{0,260}?(?<value>\\d[\\d.,\\s\\u00a0]*[KMGTPE]i?B)",
         "transform": "bytes"
       },
       "ratio": {

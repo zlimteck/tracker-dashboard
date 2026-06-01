@@ -243,8 +243,16 @@ const knownTrackerFields: Record<string, {
     mode: 'browser',
     byteUnit: 'binary',
     fields: {
-      uploadedBytes: unit3dFields.uploadedBytes,
-      downloadedBytes: unit3dFields.downloadedBytes,
+      // BitPorn enrobe la valeur dans un <a href=".../uploads"> et utilise un espace
+      // insecable ( ) -> on ancre sur la classe et on capture juste nombre+unite.
+      uploadedBytes: {
+        regex: 'ratio-bar__uploaded[\\s\\S]{0,260}?(?<value>\\d[\\d.,\\s\\u00a0]*[KMGTPE]i?B)',
+        transform: 'bytes',
+      },
+      downloadedBytes: {
+        regex: 'ratio-bar__downloaded[\\s\\S]{0,260}?(?<value>\\d[\\d.,\\s\\u00a0]*[KMGTPE]i?B)',
+        transform: 'bytes',
+      },
       ratio: unit3dFields.ratio,
       seeding: unit3dFields.seeding,
       seedBonus: unit3dFields.seedBonus,
