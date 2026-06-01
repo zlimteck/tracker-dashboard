@@ -44,6 +44,7 @@ Le cookie est optionnel et propre à chaque tracker : laissez le champ vide pour
 
 ## Changements récents
 
+- Ajout option ProxyLess pour certains trackers (MaM notamment)
 - Ajout cookies de sessions pour tous les trackers, pour éviter les complications (captchas, antibots etc) lors des logins via le browser headless
 - Ajout CrazySpirits, Seedpool et Tigers-DL (merci jack)
 - Ajout automatique de logos

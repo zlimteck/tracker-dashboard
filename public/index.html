@@ -2054,8 +2054,9 @@
       id:       o.id || genId(),
       label:    o.label || '',
       enabled:  Boolean(o.enabled),
+      direct:   Boolean(o.direct) || o.type === 'direct',
       trackers: Array.isArray(o.trackers) ? o.trackers : [],
-      type:     o.type || 'socks5',
+      type:     (Boolean(o.direct) || o.type === 'direct') ? 'direct' : (o.type || 'socks5'),
       host:     o.host || '',
       port:     o.port || '',
       username: o.username || '',
@@ -2075,6 +2076,7 @@
 
   function renderOverrideCard(o) {
     const trackers = trackerConfig.length > 0 ? trackerConfig : [];
+    const isDirect = o.type === 'direct';
     const checks = trackers.map(t => `
       <label><input type="checkbox" data-tid="${escapeHtml(t.id)}" ${o.trackers.includes(t.id) ? 'checked' : ''}/> ${escapeHtml(t.name)}</label>
     `).join('');
@@ -2091,7 +2093,8 @@
           </div>
           <div>
             <label>Type</label>
-            <select data-field="type">
+            <select data-field="type" onchange="proxyOverridesState = collectOverridesFromDom(); renderProxyOverrides();">
+              <option value="direct" ${isDirect ? 'selected' : ''}>Direct</option>
               <option value="socks5" ${o.type === 'socks5' ? 'selected' : ''}>SOCKS5</option>
               <option value="socks4" ${o.type === 'socks4' ? 'selected' : ''}>SOCKS4</option>
               <option value="http"   ${o.type === 'http'   ? 'selected' : ''}>HTTP</option>
@@ -2100,22 +2103,22 @@
           </div>
           <div>
             <label>Hôte</label>
-            <input type="text" data-field="host" value="${escapeHtml(o.host)}" placeholder="127.0.0.1" />
+            <input type="text" data-field="host" value="${escapeHtml(o.host)}" placeholder="${isDirect ? 'non utilise' : '127.0.0.1'}" ${isDirect ? 'disabled' : ''} />
           </div>
           <div>
             <label>Port</label>
-            <input type="text" data-field="port" value="${escapeHtml(o.port)}" placeholder="1080" />
+            <input type="text" data-field="port" value="${escapeHtml(o.port)}" placeholder="${isDirect ? 'non utilise' : '1080'}" ${isDirect ? 'disabled' : ''} />
           </div>
           <div>
             <label>Utilisateur</label>
-            <input type="text" data-field="username" value="${escapeHtml(o.username)}" placeholder="—" />
+            <input type="text" data-field="username" value="${escapeHtml(o.username)}" placeholder="—" ${isDirect ? 'disabled' : ''} />
           </div>
           <button class="proxy-override-delete" onclick="deleteProxyOverride('${escapeHtml(o.id)}')">Supprimer</button>
         </div>
         <div class="row">
           <div>
             <label>Mot de passe</label>
-            <input type="password" data-field="password" value="${escapeHtml(o.password)}" placeholder="—" />
+            <input type="password" data-field="password" value="${escapeHtml(o.password)}" placeholder="—" ${isDirect ? 'disabled' : ''} />
           </div>
           <div>
             <label>Trackers couverts par ce proxy</label>
@@ -2136,11 +2139,12 @@
         id,
         label:    field('label').value.trim(),
         enabled:  field('enabled').checked,
+        direct:   field('type').value === 'direct',
         type:     field('type').value,
-        host:     field('host').value.trim(),
-        port:     field('port').value.trim(),
-        username: field('username').value.trim(),
-        password: field('password').value,
+        host:     field('type').value === 'direct' ? '' : field('host').value.trim(),
+        port:     field('type').value === 'direct' ? '' : field('port').value.trim(),
+        username: field('type').value === 'direct' ? '' : field('username').value.trim(),
+        password: field('type').value === 'direct' ? '' : field('password').value,
         trackers,
       };
     });

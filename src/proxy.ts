@@ -23,6 +23,8 @@ export interface ProxyOverride {
   id: string;
   label: string;
   enabled: boolean;
+  /** Si true, ce tracker sort sans proxy meme si un proxy global est actif. */
+  direct: boolean;
   /** Liste des ids de trackers qui passent par ce proxy */
   trackers: string[];
   type: string;
@@ -83,6 +85,17 @@ export function resolveProxyForTracker(trackerId?: string): ProxySettings {
     const override = loadProxyOverrides().find(
       o => o.enabled && Array.isArray(o.trackers) && o.trackers.includes(trackerId),
     );
+    if (override?.direct) {
+      return {
+        enabled: false,
+        type: 'direct',
+        host: '',
+        port: '',
+        username: '',
+        password: '',
+        directConnectAllowed: true,
+      };
+    }
     if (override && override.host && override.port) {
       return {
         enabled: true,
@@ -137,7 +150,8 @@ export function logProxyStatus(): void {
   if (overrides.length > 0) {
     for (const o of overrides) {
       const target = o.trackers.join(', ') || '(aucun tracker)';
-      console.log(`  Override [${o.label || o.id}] -> ${o.type}://${o.host}:${o.port} pour ${target}`);
+      const route = o.direct ? 'connexion directe' : `${o.type}://${o.host}:${o.port}`;
+      console.log(`  Override [${o.label || o.id}] -> ${route} pour ${target}`);
     }
   }
 }

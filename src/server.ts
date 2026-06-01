@@ -1713,12 +1713,13 @@ export async function start(): Promise<void> {
           id,
           label:    typeof raw.label === 'string' ? raw.label.trim().slice(0, 64) : '',
           enabled:  Boolean(raw.enabled),
+          direct:   Boolean(raw.direct) || raw.type === 'direct',
           trackers: Array.isArray(raw.trackers)
             ? Array.from(new Set(raw.trackers.filter((t: unknown): t is string => typeof t === 'string' && validTrackerIds.has(t))))
             : [],
-          type:     typeof raw.type === 'string' ? raw.type : 'socks5',
-          host:     typeof raw.host === 'string' ? raw.host.trim() : '',
-          port:     typeof raw.port === 'string' || typeof raw.port === 'number' ? String(raw.port).trim() : '',
+          type:     Boolean(raw.direct) || raw.type === 'direct' ? 'direct' : (typeof raw.type === 'string' ? raw.type : 'socks5'),
+          host:     Boolean(raw.direct) || raw.type === 'direct' ? '' : (typeof raw.host === 'string' ? raw.host.trim() : ''),
+          port:     Boolean(raw.direct) || raw.type === 'direct' ? '' : (typeof raw.port === 'string' || typeof raw.port === 'number' ? String(raw.port).trim() : ''),
           username: typeof raw.username === 'string' ? raw.username.trim() : '',
           // Si le front renvoie les bullets, on conserve le mot de passe existant
           password: passwordIn === '••••••••' ? (prev?.password ?? '') : passwordIn,
