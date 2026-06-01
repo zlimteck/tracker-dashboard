@@ -561,7 +561,7 @@ async function ensureLoggedIn(
     throw new Error(`Formulaire login invalide (${invalidFields.join(', ')}) - verifier le format des identifiants`);
   }
 
-  const submit = page.locator('button[type="submit"], input[type="submit"]');
+  const submit = page.locator('form button[type="submit"]:visible, form input[type="submit"]:visible, button[type="submit"]:visible, input[type="submit"]:visible');
   if (await submit.count() > 0) {
     const button = submit.first();
     await button.waitFor({ state: 'visible', timeout: 10_000 });

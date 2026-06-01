@@ -863,7 +863,7 @@
     <!-- ── Overrides par tracker ────────────────────────────────────────── -->
     <h2 style="margin-top:24px">Proxys spécifiques par tracker</h2>
     <p style="font-size:12px; color:var(--muted); margin-bottom:12px">
-      Surcharge le proxy global pour les trackers cochés. Un tracker ne peut être couvert que par un seul proxy actif à la fois.
+      Surcharge le proxy global pour les trackers cochés. Choisir Direct sans proxy permet à un tracker de sortir hors proxy global. Un tracker ne peut être couvert que par un seul override actif à la fois.
     </p>
     <div class="proxyspin-promo">
       Besoin d'un proxy rotatif auto-hébergé pour les sites qui bannissent une IP fixe ?
@@ -876,6 +876,7 @@
     <div id="proxy-overrides-list"></div>
     <div class="proxy-actions" style="margin-top:12px">
       <button class="btn-test" onclick="addProxyOverride()">+ Ajouter un proxy</button>
+      <button class="btn-test" onclick="addDirectOverride()">+ Ajouter une sortie directe</button>
       <button class="btn-save" onclick="saveProxyOverrides()">Enregistrer les overrides</button>
       <span id="proxy-overrides-result"></span>
     </div>
@@ -2068,7 +2069,7 @@
     const container = document.getElementById('proxy-overrides-list');
     if (!container) return;
     if (proxyOverridesState.length === 0) {
-      container.innerHTML = '<p style="font-size:12px; color:var(--muted); font-style:italic; margin:0">Aucun override - le proxy global s\'applique à tous les trackers.</p>';
+      container.innerHTML = '<p style="font-size:12px; color:var(--muted); font-style:italic; margin:0">Aucun override - le proxy global s\'applique à tous les trackers. Ajoutez une sortie directe pour faire passer un tracker sans proxy.</p>';
       return;
     }
     container.innerHTML = proxyOverridesState.map(renderOverrideCard).join('');
@@ -2094,7 +2095,7 @@
           <div>
             <label>Type</label>
             <select data-field="type" onchange="proxyOverridesState = collectOverridesFromDom(); renderProxyOverrides();">
-              <option value="direct" ${isDirect ? 'selected' : ''}>Direct</option>
+              <option value="direct" ${isDirect ? 'selected' : ''}>Direct sans proxy</option>
               <option value="socks5" ${o.type === 'socks5' ? 'selected' : ''}>SOCKS5</option>
               <option value="socks4" ${o.type === 'socks4' ? 'selected' : ''}>SOCKS4</option>
               <option value="http"   ${o.type === 'http'   ? 'selected' : ''}>HTTP</option>
@@ -2153,6 +2154,18 @@
   function addProxyOverride() {
     proxyOverridesState = collectOverridesFromDom();
     proxyOverridesState.push(normalizeOverride({ id: genId(), enabled: false }));
+    renderProxyOverrides();
+  }
+
+  function addDirectOverride() {
+    proxyOverridesState = collectOverridesFromDom();
+    proxyOverridesState.push(normalizeOverride({
+      id: genId(),
+      label: 'Sortie directe',
+      enabled: true,
+      type: 'direct',
+      direct: true,
+    }));
     renderProxyOverrides();
   }
 
