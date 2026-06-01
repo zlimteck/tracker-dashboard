@@ -67,6 +67,7 @@ let isRefreshing                = false;
 const pendingScheduledRuns = new Set<string>();
 
 const unit3dFields = knownUnit3dFields();
+const gazelleStatsFields = knownGazelleStatsFields();
 
 function knownUnit3dFields(): Record<string, FieldExtractor> {
   return {
@@ -101,6 +102,27 @@ function knownUnit3dFields(): Record<string, FieldExtractor> {
     tokens: {
       regex: 'ratio-bar__tokens[\\s\\S]*?<i[^>]*>[\\s\\S]*?</i>\\s*(?<value>\\d+)',
       transform: 'integer',
+    },
+  };
+}
+
+function knownGazelleStatsFields(): Record<string, FieldExtractor> {
+  return {
+    seedBonus: {
+      regex: '>Credits</a>:\\s*</td>[\\s\\S]{0,140}?<span[^>]*class=[\'"]stat[\'"][^>]*>\\s*(?<value>[\\d\\s.,]+)',
+      transform: 'string',
+    },
+    uploadedBytes: {
+      regex: '>Up</a>:\\s*</td>[\\s\\S]{0,160}?<span[^>]*class=[\'"]stat[\'"][^>]*>\\s*(?<value>[\\d\\s.,]+\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))',
+      transform: 'bytes',
+    },
+    downloadedBytes: {
+      regex: '>Down</a>:\\s*</td>[\\s\\S]{0,160}?<span[^>]*class=[\'"]stat[\'"][^>]*>\\s*(?<value>[\\d\\s.,]+\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))',
+      transform: 'bytes',
+    },
+    ratio: {
+      regex: '>Ratio</a>:\\s*</td>[\\s\\S]{0,220}?<span[^>]*class=[\'"]r\\d+[\'"][^>]*>\\s*(?<value>\\d[\\d\\s.,]*)',
+      transform: 'number',
     },
   };
 }
@@ -408,6 +430,21 @@ const knownTrackerFields: Record<string, {
       },
     },
   },
+  kufirc: {
+    fetchUrl: 'index.php',
+    byteUnit: 'binary',
+    fields: gazelleStatsFields,
+  },
+  happyfappy: {
+    fetchUrl: 'index.php',
+    byteUnit: 'binary',
+    fields: gazelleStatsFields,
+  },
+  empornium: {
+    fetchUrl: 'index.php',
+    byteUnit: 'binary',
+    fields: gazelleStatsFields,
+  },
   nostradamus: {
     fetchUrl: 'activity',
     mode: 'browser',
@@ -630,6 +667,28 @@ function normalizeTrackerConfigs(): TrackerConfig[] {
         'name="username"',
         'name="password"',
         'name=\'_csrf_token\'',
+      ];
+      changed = true;
+    }
+    if (['kufirc', 'happyfappy', 'empornium'].includes(tracker.id)) {
+      if (tracker.login.url !== 'login') {
+        tracker.login.url = 'login';
+      }
+      tracker.login.preStep = {
+        url: 'login',
+        extract: {},
+        includeHiddenInputs: true,
+      };
+      tracker.login.body = {
+        username: '{{username}}',
+        password: '{{password}}',
+        keeploggedin: '1',
+        submit: 'login',
+      };
+      tracker.login.failurePatterns = [
+        'Login ::',
+        'name="password"',
+        'id="login_button"',
       ];
       changed = true;
     }

@@ -1,0 +1,52 @@
+{
+  "id": "empornium",
+  "name": "Empornium",
+  "baseUrl": "https://www.empornium.sx",
+  "enabled": false,
+  "login": {
+    "url": "login",
+    "method": "POST",
+    "contentType": "form",
+    "preStep": {
+      "url": "login",
+      "extract": {},
+      "includeHiddenInputs": true
+    },
+    "body": {
+      "username": "{{username}}",
+      "password": "{{password}}",
+      "keeploggedin": "1",
+      "submit": "login"
+    },
+    "failurePatterns": [
+      "Login ::",
+      "name=\"password\"",
+      "id=\"login_button\""
+    ]
+  },
+  "fetch": {
+    "url": "index.php",
+    "responseType": "html",
+    "fields": {
+      "seedBonus": {
+        "regex": ">Credits</a>:\\s*</td>[\\s\\S]{0,140}?<span[^>]*class=['\"]stat['\"][^>]*>\\s*(?<value>[\\d\\s.,]+)",
+        "transform": "string"
+      },
+      "uploadedBytes": {
+        "regex": ">Up</a>:\\s*</td>[\\s\\S]{0,160}?<span[^>]*class=['\"]stat['\"][^>]*>\\s*(?<value>[\\d\\s.,]+\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))",
+        "transform": "bytes"
+      },
+      "downloadedBytes": {
+        "regex": ">Down</a>:\\s*</td>[\\s\\S]{0,160}?<span[^>]*class=['\"]stat['\"][^>]*>\\s*(?<value>[\\d\\s.,]+\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))",
+        "transform": "bytes"
+      },
+      "ratio": {
+        "regex": ">Ratio</a>:\\s*</td>[\\s\\S]{0,220}?<span[^>]*class=['\"]r\\d+['\"][^>]*>\\s*(?<value>\\d[\\d\\s.,]*)",
+        "transform": "number"
+      }
+    }
+  },
+  "dashboard": {
+    "byteUnit": "binary"
+  }
+}
