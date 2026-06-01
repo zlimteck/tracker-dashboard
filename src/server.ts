@@ -251,6 +251,19 @@ const knownTrackerFields: Record<string, {
       bufferBytes: unit3dFields.bufferBytes,
     },
   },
+  exoticaz: {
+    fetchUrl: '/',
+    mode: 'browser',
+    byteUnit: 'decimal',
+    fields: {
+      uploadedBytes:   { regex: 'fa-arrow-up[\\s\\S]{0,40}?</i>\\s*(?<value>[\\d.,]+\\s*[KMGTPE]?i?B)',   transform: 'bytes' },
+      downloadedBytes: { regex: 'fa-arrow-down[\\s\\S]{0,40}?</i>\\s*(?<value>[\\d.,]+\\s*[KMGTPE]?i?B)', transform: 'bytes' },
+      ratio:           { regex: 'fa-signal[\\s\\S]{0,40}?</i>\\s*(?<value>[\\d.,]+)',                     transform: 'number' },
+      bufferBytes:     { regex: 'fa-database[\\s\\S]{0,40}?</i>\\s*(?<value>[\\d.,]+\\s*[KMGTPE]?i?B)',    transform: 'bytes' },
+      seeding:         { regex: 'Seeding:</a>\\s*(?<value>\\d+)',                                          transform: 'integer' },
+      seedBonus:       { regex: 'Bonus:</a>\\s*(?<value>[\\d.,]+)',                                        transform: 'string' },
+    },
+  },
   abnormal: {
     fetchUrl: '/',
     byteUnit: 'decimal',
