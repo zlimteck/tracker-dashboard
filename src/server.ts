@@ -704,6 +704,7 @@ function normalizeTrackerConfigs(): TrackerConfig[] {
         'Login ::',
         'name="password"',
         'id="login_button"',
+        'href="/login"',
       ];
       changed = true;
     }

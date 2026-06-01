@@ -493,6 +493,7 @@ async function ensureLoggedIn(
       `[name="${name}"]`,
       ['username', 'email', 'login', 'identifier'].includes(name.toLowerCase()) ? 'input[name="identifier"]' : '',
       ['username', 'email', 'login', 'identifier'].includes(name.toLowerCase()) ? 'input[name="username"]' : '',
+      ['username', 'email', 'login', 'identifier'].includes(name.toLowerCase()) ? 'input[name="login"]' : '',
       ['username', 'email', 'login', 'identifier'].includes(name.toLowerCase()) ? 'input[name="email"]' : '',
       ['username', 'email', 'login', 'identifier'].includes(name.toLowerCase()) ? 'input[type="email"]' : '',
       ['username', 'email', 'login', 'identifier'].includes(name.toLowerCase()) ? 'input[type="text"]' : '',
@@ -541,10 +542,19 @@ async function ensureLoggedIn(
   }
   await page.waitForTimeout(250);
 
-  const invalidFields = await page.locator('input:invalid').evaluateAll(inputs => inputs.map(input => {
-    const el = input as HTMLInputElement;
-    return el.name || el.id || el.type || 'input';
-  })).catch(() => []);
+  const invalidFields = await page.locator('input:invalid').evaluateAll(inputs => inputs
+    .filter(input => {
+      const el = input as HTMLInputElement;
+      const style = window.getComputedStyle(el);
+      const visible = style.visibility !== 'hidden' &&
+        style.display !== 'none' &&
+        el.getClientRects().length > 0;
+      return visible && !el.disabled;
+    })
+    .map(input => {
+      const el = input as HTMLInputElement;
+      return el.name || el.id || el.type || 'input';
+    })).catch(() => []);
   if (invalidFields.length > 0) {
     throw new Error(`Formulaire login invalide (${invalidFields.join(', ')}) - verifier le format des identifiants`);
   }

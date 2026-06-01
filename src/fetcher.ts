@@ -212,6 +212,12 @@ function hasBrowserAuthFailure(
   const pathName = new URL(url).pathname;
   if (tracker.id === 'yggreborn' && pathName.startsWith('/account')) return null;
   if (pathName.includes('login') || pathName.includes('sign-in') || pathName.includes('signin')) return 'login-url';
+  if (['kufirc', 'happyfappy', 'empornium'].includes(tracker.id)) {
+    const lower = html.toLowerCase();
+    const hasLoginLink = lower.includes('href="/login"') || lower.includes("href='/login'");
+    const hasLogoutLink = lower.includes('href="/logout"') || lower.includes("href='/logout'");
+    if (hasLoginLink && !hasLogoutLink) return 'public-home';
+  }
   return hasFailurePattern(html, tracker.login.failurePatterns);
 }
 

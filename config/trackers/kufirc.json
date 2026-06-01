@@ -20,7 +20,8 @@
     "failurePatterns": [
       "Login ::",
       "name=\"password\"",
-      "id=\"login_button\""
+      "id=\"login_button\"",
+      "href=\"/login\""
     ]
   },
   "fetch": {
