@@ -1418,9 +1418,18 @@
     const byteUnit = statByteUnit(stat);
     const buffer = formatBuffer(f, byteUnit);
 
+    const ratiolessCell1 = hasStatValue(f.points)
+      ? statCell('Points', [formatCount(f.points), 'pts'], '', '')
+      : (hasStatValue(f.seedTime)
+          ? statCell('Seed 24h', formatCount(f.seedTime), '', '')
+          : statCell('Points', '-', '', ''));
+    const ratiolessCell2 = hasStatValue(f.rate)
+      ? statCell('Taux', [formatCount(f.rate), 'pts/jour'], '', 'col-bonus')
+      : (hasStatValue(f.dlQuota)
+          ? statCell('DL jour', formatCount(f.dlQuota), '', '')
+          : statCell('Taux', '-', '', ''));
     const bottomCells = ratioless
-      ? `${statCell('Points', [formatCount(f.points), 'pts'], '', '')}
-         ${statCell('Taux',   [formatCount(f.rate),   'pts/jour'], '', 'col-bonus')}`
+      ? `${ratiolessCell1}${ratiolessCell2}`
       : `${hasStatValue(f.seedTimeDays)
           ? statCell('Seed time', [formatCount(f.seedTimeDays), 'j'], '', '')
           : statCell('Seeding', formatCount(f.seeding), '', '')}

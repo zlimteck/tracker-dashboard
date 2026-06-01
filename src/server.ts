@@ -307,22 +307,19 @@ const knownTrackerFields: Record<string, {
     fetchUrl: 'activity',
     mode: 'browser',
     byteUnit: 'binary',
+    ratioless: true,
     fields: {
       uploadedBytes: {
         regex: 'user-stat-up[^>]*>[\\s\\S]*?(?<value>\\d[\\d\\s.,]*\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))\\s*</span>',
         transform: 'bytes',
       },
-      downloadedBytes: {
-        regex: 'user-stat-dn[^>]*>[\\s\\S]*?(?<value>\\d[\\d\\s.,]*\\s*(?:[KMGTPE](?:i?B|io|o)|B|o))\\s*</span>',
-        transform: 'bytes',
-      },
-      seedBonus: {
-        regex: 'class=["\']val["\'][\\s\\S]{0,160}?(?<value>\\d[\\d\\s.,]*)[\\s\\S]{0,160}?Points bonus',
+      seedTime: {
+        regex: 'user-stat-seed24[\\s\\S]{0,120}?</i>\\s*(?<value>[^<]+?)\\s*</span>',
         transform: 'string',
       },
-      seeding: {
-        regex: 'Seeds\\s*\\((?<value>\\d+)\\)',
-        transform: 'integer',
+      dlQuota: {
+        regex: 'user-stat-dlday[\\s\\S]{0,160}?</i>\\s*(?<value>[^<]+?)\\s*</span>',
+        transform: 'string',
       },
     },
   },
@@ -1039,7 +1036,7 @@ function fakeNumber(seed: number, min: number, max: number): number {
 
 function fakeStatsForPresentation(): TrackerStats[] {
   const now = new Date();
-  const ratiolessIds = new Set(['hdonly', 'nostradamus']);
+  const ratiolessIds = new Set(['hdonly', 'nostradamus', 'nexum']);
   return listTrackerDefinitionFiles()
     .sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }))
     .map((tracker, index) => {
