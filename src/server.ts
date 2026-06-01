@@ -609,8 +609,13 @@ function normalizeTrackerConfigs(): TrackerConfig[] {
     }
     if (isUnit3dTracker) {
       tracker.login.preStep = {
-        ...(tracker.login.preStep ?? { url: 'login', extract: {} }),
+        url: tracker.login.preStep?.url ?? 'login',
         includeHiddenInputs: true,
+        // CSRF robuste : accepte l'input cache <input name="_token" value="..."> OU
+        // le <meta name="csrf-token" content="..."> du <head> (selon le rendu UNIT3D).
+        extract: {
+          _csrf: { regex: '(?:name="_token"\\s+value="|name="csrf-token"\\s+content=")(?<value>[^"]+)"' },
+        },
       };
       tracker.login.body = {
         _token: '{{_csrf}}',

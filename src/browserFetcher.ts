@@ -476,10 +476,11 @@ async function ensureLoggedIn(
 
   // Mode cookie uniquement : on ne soumet JAMAIS le formulaire (sinon, sur des sites
   // comme MyAnonamouse, chaque tentative cree une session et finit par bloquer le compte).
-  // Si le cookie injecte ne suffit pas, on laisse l'echec d'auth etre signale en aval.
+  // Le cookie injecte ne suffit pas (page de login detectee) -> on ECHOUE TOUT DE SUITE
+  // avec un message clair, au lieu de poursuivre (2e navigation + attentes Turnstile qui
+  // font traîner jusqu'au timeout de 90s).
   if (tracker.login.cookieOnly) {
-    console.warn(`[${tracker.name}] cookieOnly : session non valide et aucun login auto - fournir un cookie de session valide`);
-    return;
+    throw new Error('Session non authentifiee : cookie de session absent, incomplet ou expire (login automatique desactive pour ce tracker - fournir un cookie complet)');
   }
 
   const loginUrl = resolveUrl(tracker.baseUrl, tracker.login.url);
