@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import axios from 'axios';
 import { fetchTracker, invalidateAllSessions, invalidateSession } from './fetcher.js';
@@ -56,6 +57,47 @@ const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const SESSION_COOKIE = 'tracker_dashboard_session';
 const TRACKER_DEFINITIONS_SEEN_KEY = 'trackerDefinitionsSeen';
 const PRESENTATION_MODE_KEY = 'presentationMode';
+
+function readAppVersion(): string {
+  try {
+    const packageJsonPath = path.join(__dirname, '..', 'package.json');
+    const raw = fs.readFileSync(packageJsonPath, 'utf8');
+    const parsed = JSON.parse(raw) as { version?: unknown };
+    return typeof parsed.version === 'string' && parsed.version.trim()
+      ? parsed.version.trim()
+      : 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+function shortRevision(revision: string): string {
+  return /^[0-9a-f]{7,40}$/i.test(revision) ? revision.slice(0, 7) : revision;
+}
+
+function startupBanner(port: number): string {
+  const appVersion = readAppVersion();
+  const imageSource = process.env.APP_IMAGE_SOURCE?.trim() || 'local';
+  const imageVersion = process.env.APP_IMAGE_VERSION?.trim() || 'dev';
+  const imageRevision = process.env.APP_IMAGE_REVISION?.trim() || 'unknown';
+  const imageRef = process.env.APP_IMAGE_REF?.trim() || 'local';
+  const revisionShort = shortRevision(imageRevision);
+  const comparableTag = /^[0-9a-f]{7,40}$/i.test(imageRevision)
+    ? `sha-${revisionShort}`
+    : 'unknown';
+
+  return [
+    '',
+    `Tracker Dashboard v${appVersion}`,
+    `Image: ${imageSource}:${imageVersion}`,
+    `Build ref: ${imageRef}`,
+    `Build revision: ${revisionShort}`,
+    `Comparable GHCR tag: ${comparableTag}`,
+    'GHCR: https://github.com/Aerya/tracker-dashboard/pkgs/container/tracker-dashboard',
+    `🚀  Dashboard → http://localhost:${port}`,
+    '',
+  ].join('\n');
+}
 
 // ─── Chargement trackers / credentials ───────────────────────────────────────
 
@@ -1828,7 +1870,7 @@ export async function start(): Promise<void> {
 
   const port = parseInt(process.env.PORT ?? '3000', 10);
   logProxyStatus();
-  app.listen(port, () => console.log(`\n🚀  Dashboard → http://localhost:${port}\n`));
+  app.listen(port, () => console.log(startupBanner(port)));
 
   await refresh(trackers);
 

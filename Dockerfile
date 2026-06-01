@@ -10,6 +10,14 @@ RUN npm run build
 FROM node:22-bookworm-slim
 
 WORKDIR /app
+ARG APP_IMAGE_SOURCE=local
+ARG APP_IMAGE_VERSION=dev
+ARG APP_IMAGE_REVISION=unknown
+ARG APP_IMAGE_REF=local
+ENV APP_IMAGE_SOURCE=$APP_IMAGE_SOURCE \
+    APP_IMAGE_VERSION=$APP_IMAGE_VERSION \
+    APP_IMAGE_REVISION=$APP_IMAGE_REVISION \
+    APP_IMAGE_REF=$APP_IMAGE_REF
 COPY package*.json ./
 RUN npm install --omit=dev && npm install --omit=dev --no-save playwright@1.60.0 top-user-agents@2.1.111
 RUN npx playwright install --with-deps chromium
