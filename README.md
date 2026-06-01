@@ -44,15 +44,12 @@ Le cookie est optionnel et propre à chaque tracker : laissez le champ vide pour
 
 ## Changements récents
 
-- Ajout option ProxyLess pour certains trackers (MaM notamment)
-- Ajout cookies de sessions pour tous les trackers, pour éviter les complications (captchas, antibots etc) lors des logins via le browser headless
+- Ajout option refresh 6 et 12h
+- Allègement restart du Docker : données < 24h servies en priorité
+- Option ProxyLess pour certains trackers (MaM notamment)
+- Cookies de sessions pour tous les trackers, pour éviter les complications (captchas, antibots etc) lors des logins via le browser headless
 - Ajout CrazySpirits, Seedpool et Tigers-DL (merci jack)
-- Ajout automatique de logos
-- Ajout vue Liste en sus de Cartes
 - Ajout "Incident connu" + note libre sur les cartes. Inspiré par LaCale vu le site en ligne mais login HS depuis le 19 mai 2026
-- Ajout de proxy secondaire, par site
-- Badge "Site injoignable" + motif
-- Fix ratio C411
 - Ajout TorrentLeech (merci NohamR)
 - Check de joignabilité en cas d'erreur de login
 - Export Prometheus + dashboard Grafana : endpoint `/metrics` protégé par token (`METRICS_TOKEN`) et dashboard JSON prêt à importer dans `grafana/`.
@@ -82,7 +79,7 @@ Depuis la WebUI, on peut :
 - autoriser explicitement la connexion directe sans proxy si ce Docker passe par un VPN (ou si vous aimez sortir à poual, ce qui est fortément déconseillé),
 - lancer un rafraîchissement manuel des statistiques,
 - activer une connexion automatique par tracker,
-- lui choisir un intervalle : 24h, 48h, 7 jours ou 21 jours.
+- lui choisir un intervalle : 6h, 12h, 24h, 48h, 7 jours ou 21 jours.
 
 Les données persistantes sont stockées dans SQLite, dans le volume `config` monté.
 

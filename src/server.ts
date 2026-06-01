@@ -1254,6 +1254,14 @@ async function refreshOneTracker(
 
 function nextRandomRun(intervalHours: number): string {
   const next = new Date();
+  // Sous-journalier (6h/12h) : prochaine = maintenant + intervalle + jitter (0-30 min)
+  // pour eviter que tous les trackers tombent pile a la meme minute.
+  if (intervalHours < 24) {
+    const jitterMs = Math.floor(Math.random() * 30 * 60_000);
+    next.setTime(next.getTime() + intervalHours * 3600_000 + jitterMs);
+    return next.toISOString();
+  }
+  // >= 24h : on planifie a un jour futur, a une heure aleatoire (etalement journalier).
   next.setHours(0, 0, 0, 0);
   next.setDate(next.getDate() + Math.max(1, Math.round(intervalHours / 24)));
   next.setHours(
@@ -1718,7 +1726,7 @@ export async function start(): Promise<void> {
     if (!tracker) return res.status(404).json({ ok: false, error: 'Tracker introuvable' });
 
     const intervalHours = Number(req.body.intervalHours);
-    const allowed = [24, 48, 168, 504];
+    const allowed = [6, 12, 24, 48, 168, 504];
     if (!allowed.includes(intervalHours)) {
       return res.status(400).json({ ok: false, error: 'Intervalle invalide' });
     }

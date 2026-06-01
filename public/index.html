@@ -1217,6 +1217,8 @@
             <div class="toggle-track"><div class="toggle-knob"></div></div>
           </label>
           <select id="schedule-${escapeHtml(stat.id)}" onchange="saveSchedule('${escapeHtml(stat.id)}', true)">
+            <option value="6" ${interval === 6 ? 'selected' : ''}>6h</option>
+            <option value="12" ${interval === 12 ? 'selected' : ''}>12h</option>
             <option value="24" ${interval === 24 ? 'selected' : ''}>24h</option>
             <option value="48" ${interval === 48 ? 'selected' : ''}>48h</option>
             <option value="168" ${interval === 168 ? 'selected' : ''}>7j</option>
@@ -1457,6 +1459,8 @@
           <div class="toggle-track"><div class="toggle-knob"></div></div>
         </label>
         <select id="schedule-${id}" onchange="saveSchedule('${id}', true)">
+          <option value="6" ${interval === 6 ? 'selected' : ''}>6h</option>
+          <option value="12" ${interval === 12 ? 'selected' : ''}>12h</option>
           <option value="24" ${interval === 24 ? 'selected' : ''}>24h</option>
           <option value="48" ${interval === 48 ? 'selected' : ''}>48h</option>
           <option value="168" ${interval === 168 ? 'selected' : ''}>7j</option>
