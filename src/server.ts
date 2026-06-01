@@ -4,7 +4,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import axios from 'axios';
 import { fetchTracker, invalidateAllSessions, invalidateSession } from './fetcher.js';
-import { resetBrowserProfile, applyStoredCookies } from './browserFetcher.js';
+import { resetBrowserProfile, applyStoredCookies, closeBrowserSession } from './browserFetcher.js';
 import { type FieldExtractor, type TrackerConfig, type TrackerStats } from './types.js';
 import {
   loadProxySettings, saveProxySettings, buildProxyConfig, logProxyStatus,
@@ -1076,6 +1076,70 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
+// Timeout dur par tracker : au-dela, on libere le slot de concurrence et on TUE le
+// contexte Chromium bloque (sinon un seul tracker qui pendouille fige tout le refresh).
+const TRACKER_FETCH_TIMEOUT_MS = Math.max(30_000, Number(process.env.TRACKER_FETCH_TIMEOUT_MS) || 90_000);
+
+async function fetchTrackerBounded(
+  tracker: TrackerConfig,
+  creds: { username: string; password: string },
+): Promise<TrackerStats> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<TrackerStats>(resolve => {
+    timer = setTimeout(() => {
+      // Tuer le Chromium reste bloque pour liberer CPU/RAM immediatement
+      closeBrowserSession(tracker.id).catch(() => {});
+      invalidateSession(tracker.id);
+      resolve({
+        id:          tracker.id,
+        name:        tracker.name,
+        trackerUrl:  tracker.baseUrl,
+        status:      'error',
+        error:       `Delai depasse (${Math.round(TRACKER_FETCH_TIMEOUT_MS / 1000)}s) - fetch interrompu`,
+        lastUpdated: new Date().toISOString(),
+        byteUnit:    tracker.dashboard?.byteUnit ?? 'binary',
+        fields:      {},
+      });
+    }, TRACKER_FETCH_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([fetchTracker(tracker, creds), timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+// Fenetre de fraicheur au boot : en dessous, on ressert la base sans re-scraper.
+const BOOT_FRESH_HOURS = Math.max(0, Number(process.env.BOOT_FRESH_HOURS) || 24);
+
+/**
+ * Au demarrage : remplit cachedStats avec le dernier snapshot OK de chaque tracker
+ * (s'il a moins de BOOT_FRESH_HOURS). Renvoie la liste des trackers a rafraichir
+ * (pas de snapshot, ou snapshot trop vieux). Si BOOT_FRESH_HOURS=0, tout est obsolete.
+ */
+function hydrateFromSnapshots(trackers: TrackerConfig[]): TrackerConfig[] {
+  if (isPresentationMode()) return []; // mode demo : pas d'hydratation, donnees factices
+  const now = Date.now();
+  const freshMs = BOOT_FRESH_HOURS * 3600_000;
+  const hydrated: TrackerStats[] = [];
+  const stale: TrackerConfig[] = [];
+  for (const tracker of trackers) {
+    if (tracker.enabled === false) continue;
+    const snap = freshMs > 0 ? getLatestOkStatSnapshot(tracker) : null;
+    const age = snap ? now - Date.parse(snap.lastUpdated) : Infinity;
+    if (snap && Number.isFinite(age) && age < freshMs) {
+      hydrated.push(attachIncident(snap));
+    } else {
+      stale.push(tracker);
+    }
+  }
+  if (hydrated.length > 0) {
+    cachedStats = hydrated;
+    lastRefresh = new Date().toISOString();
+  }
+  return stale;
+}
+
 async function refresh(trackers: TrackerConfig[]): Promise<void> {
   if (isRefreshing) return;
   isRefreshing = true;
@@ -1115,7 +1179,7 @@ async function refresh(trackers: TrackerConfig[]): Promise<void> {
         return stat;
       }
 
-      const fetched = await fetchTracker(tracker, creds);
+      const fetched = await fetchTrackerBounded(tracker, creds);
       processIncidentStreak(fetched); // une fois par tracker par cycle
       const stat = preserveLastKnownOnTimeout(tracker, fetched);
       updateRetryState(tracker, fetched, stat);
@@ -1123,13 +1187,20 @@ async function refresh(trackers: TrackerConfig[]): Promise<void> {
       logStatResult(stat);
       return stat;
     });
-    cachedStats = results.map(attachIncident);
+    // Fusion (pas de remplacement global) : on garde en cache les trackers NON
+    // rafraichis dans ce cycle (ex: hydrates depuis la base au boot) et on remplace
+    // uniquement ceux qu'on vient de refetcher. Permet refresh(sous-ensemble).
+    const refreshedIds = new Set(results.map(r => r.id));
+    cachedStats = [
+      ...cachedStats.filter(s => !refreshedIds.has(s.id)),
+      ...results.map(attachIncident),
+    ];
     lastRefresh = new Date().toISOString();
-    saveStatSnapshots(cachedStats.filter(stat => !stat.stale));
-    const ok  = cachedStats.filter(s => s.status === 'ok').length;
-    const err = cachedStats.filter(s => s.status === 'error').length;
+    saveStatSnapshots(results.filter(stat => !stat.stale));
+    const ok  = results.filter(s => s.status === 'ok').length;
+    const err = results.filter(s => s.status === 'error').length;
     console.log(`  ✅ ${ok} ok  ❌ ${err} erreur(s)`);
-    cachedStats.filter(s => s.status === 'error')
+    results.filter(s => s.status === 'error')
       .forEach(s => console.log(`  ⚠️  ${s.name}: ${s.error}`));
   } finally {
     isRefreshing = false;
@@ -1168,7 +1239,7 @@ async function refreshOneTracker(
     return stat;
   }
 
-  const fetched = await fetchTracker(tracker, creds);
+  const fetched = await fetchTrackerBounded(tracker, creds);
   processIncidentStreak(fetched); // une fois par tracker par cycle
   const stat = preserveLastKnownOnTimeout(tracker, fetched);
   updateRetryState(tracker, fetched, stat);
@@ -1225,7 +1296,7 @@ async function refreshScheduledTracker(
 
   const schedule = getTrackerSchedule(tracker.id);
   const intervalHours = schedule?.intervalHours ?? 24;
-  const fetched = await fetchTracker(tracker, creds);
+  const fetched = await fetchTrackerBounded(tracker, creds);
   processIncidentStreak(fetched);
   const stat = preserveLastKnownOnTimeout(tracker, fetched);
   updateRetryState(tracker, fetched, stat);
@@ -1895,7 +1966,17 @@ export async function start(): Promise<void> {
   logProxyStatus();
   app.listen(port, () => console.log(startupBanner(port)));
 
-  await refresh(trackers);
+  // Au demarrage : on sert d'abord les dernieres stats en base. On ne re-scrape que
+  // les trackers dont la derniere donnee OK a plus de BOOT_FRESH_HOURS (defaut 24h),
+  // ou qui n'en ont pas. Evite de relancer 20 navigateurs a chaque restart/MaJ.
+  const staleTrackers = hydrateFromSnapshots(trackers);
+  const servedFromCache = trackers.filter(t => t.enabled !== false).length - staleTrackers.length;
+  if (staleTrackers.length === 0) {
+    console.log(`Boot: ${servedFromCache} tracker(s) servis depuis la base (< ${BOOT_FRESH_HOURS}h), aucun scraping au demarrage`);
+  } else {
+    console.log(`Boot: ${servedFromCache} tracker(s) servis depuis la base, ${staleTrackers.length} obsolete(s)/absent(s) a rafraichir`);
+    await refresh(staleTrackers);
+  }
 
   // Recuperation des logos au demarrage (non bloquant). NON force : on ne telecharge
   // que les favicons manquants -> boot leger meme avec beaucoup de trackers. Le bouton
