@@ -363,6 +363,21 @@ async function waitForTrackerContent(tracker: TrackerConfig, page: Page): Promis
       return false;
     }
   }
+  if (tracker.id === 'mam') {
+    try {
+      await page.waitForFunction(
+        () => {
+          const text = document.body?.innerText ?? '';
+          return text.includes('Uploaded') && text.includes('Downloaded') && text.includes('Share ratio');
+        },
+        null,
+        { timeout: 20_000 },
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }
   if (tracker.id === 'tigersdl') {
     try {
       await page.waitForFunction(

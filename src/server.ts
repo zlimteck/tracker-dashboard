@@ -354,6 +354,7 @@ const knownTrackerFields: Record<string, {
   },
   mam: {
     fetchUrl: 'u/',
+    mode: 'browser',
     byteUnit: 'binary',
     fields: {
       uploadedBytes: {
@@ -570,8 +571,8 @@ function normalizeTrackerConfigs(): TrackerConfig[] {
       changed = true;
     }
     if (tracker.id === 'mam') {
-      if (tracker.login.url !== 'takelogin.php') {
-        tracker.login.url = 'takelogin.php';
+      if (tracker.login.url !== 'login.php?returnto=%2Fu%2F') {
+        tracker.login.url = 'login.php?returnto=%2Fu%2F';
       }
       tracker.login.preStep = {
         url: 'login.php?returnto=%2Fu%2F',

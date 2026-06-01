@@ -4,7 +4,7 @@
   "baseUrl": "https://www.myanonamouse.net",
   "enabled": false,
   "login": {
-    "url": "takelogin.php",
+    "url": "login.php?returnto=%2Fu%2F",
     "method": "POST",
     "contentType": "form",
     "preStep": {
@@ -28,6 +28,7 @@
   },
   "fetch": {
     "url": "u/",
+    "mode": "browser",
     "responseType": "html",
     "fields": {
       "uploadedBytes": {
