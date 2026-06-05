@@ -4,7 +4,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import axios from 'axios';
 import { fetchTracker, invalidateAllSessions, invalidateSession } from './fetcher.js';
-import { resetBrowserProfile, applyStoredCookies, closeBrowserSession } from './browserFetcher.js';
+import { resetBrowserProfile, closeBrowserSession } from './browserFetcher.js';
 import { type FieldExtractor, type TrackerConfig, type TrackerStats } from './types.js';
 import {
   loadProxySettings, saveProxySettings, buildProxyConfig, logProxyStatus,
@@ -1899,12 +1899,11 @@ export async function start(): Promise<void> {
     }
     const cookie = typeof req.body?.cookie === 'string' ? req.body.cookie : '';
     setTrackerCookie(id, cookie);
-    // Injection a chaud dans le contexte existant (sans le fermer -> pas de
-    // "Target page closed" si un fetch est en cours). Sinon ce sera fait au prochain fetch.
-    const tracker = loadTrackerDefinitionFile(id) ?? normalizeTrackerConfigs().find(t => t.id === id);
-    if (tracker && cookie.trim()) {
-      await applyStoredCookies(tracker).catch(() => {});
-    }
+    // Un nouveau cookie colle remplace la valeur stockee. On purge aussi le profil
+    // navigateur persistant pour eviter de conserver d'anciens cookies non presents
+    // dans le nouveau collage.
+    await resetBrowserProfile(id);
+    invalidateSession(id);
     console.log(`[Cookies] ${id} : cookie de session ${cookie.trim() ? 'enregistre' : 'efface'}`);
     res.json({ ok: true, hasCookie: hasTrackerCookie(id) });
   });
