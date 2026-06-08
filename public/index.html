@@ -226,9 +226,35 @@
       font-size: 20px;
       font-variant-numeric: tabular-nums;
     }
-    #beta-grid.beta-compact .card-footer,
-    #beta-grid.beta-compact .card-schedule { display: none; }
-    #beta-grid.beta-compact .stat { padding: 6px 10px; }
+    .beta-section-tabs {
+      display: flex;
+      gap: 6px;
+      width: min(100%, 2010px);
+      margin: 0 0 14px;
+      padding: 4px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+      overflow-x: auto;
+    }
+    .beta-section-tabs button {
+      background: transparent;
+      border: 0;
+      color: var(--muted);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .beta-section-tabs button:hover { color: var(--text); }
+    .beta-section-tabs button.active {
+      background: color-mix(in srgb, var(--blue) 18%, transparent);
+      color: var(--blue);
+    }
+    .beta-section { display: none; }
+    .beta-section.active { display: block; }
     .beta-workbench {
       display: grid;
       grid-template-columns: 280px minmax(0, 1fr);
@@ -347,20 +373,55 @@
       border: 1px solid var(--border);
       border-radius: 8px;
     }
+    .beta-calendar-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
     .beta-calendar {
       display: grid;
-      grid-template-columns: repeat(14, 1fr);
-      gap: 3px;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 6px;
+    }
+    .beta-weekday {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      text-align: center;
+      text-transform: uppercase;
+      letter-spacing: .4px;
     }
     .beta-day {
-      aspect-ratio: 1;
-      border-radius: 4px;
-      background: color-mix(in srgb, var(--muted) 16%, transparent);
-      border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+      min-height: 74px;
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--bg) 70%, transparent);
+      border: 1px solid var(--border);
+      padding: 7px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 4px;
     }
-    .beta-day.ok { background: color-mix(in srgb, var(--green) 34%, transparent); }
-    .beta-day.warn { background: color-mix(in srgb, var(--yellow) 34%, transparent); }
-    .beta-day.bad { background: color-mix(in srgb, var(--red) 34%, transparent); }
+    .beta-day.out { opacity: .36; }
+    .beta-day.ok { border-color: color-mix(in srgb, var(--green) 55%, var(--border)); }
+    .beta-day.warn { border-color: color-mix(in srgb, var(--yellow) 55%, var(--border)); }
+    .beta-day.bad { border-color: color-mix(in srgb, var(--red) 55%, var(--border)); }
+    .beta-day-num { font-size: 12px; font-weight: 700; }
+    .beta-day-meta { display: flex; gap: 4px; flex-wrap: wrap; }
+    .beta-pill {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 99px;
+      padding: 2px 6px;
+      font-size: 10px;
+      font-weight: 700;
+      background: color-mix(in srgb, var(--muted) 16%, transparent);
+      color: var(--muted);
+    }
+    .beta-pill.ok { color: var(--green); background: color-mix(in srgb, var(--green) 14%, transparent); }
+    .beta-pill.bad { color: var(--red); background: color-mix(in srgb, var(--red) 14%, transparent); }
     .beta-form-row {
       display: grid;
       grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
@@ -1234,9 +1295,15 @@
         <button id="beta-filter-all" class="active" onclick="setBetaFilter('all')" type="button">Tous</button>
         <button id="beta-filter-problems" onclick="setBetaFilter('problems')" type="button">Problemes</button>
         <button id="beta-filter-healthy" onclick="setBetaFilter('healthy')" type="button">OK</button>
-        <button id="beta-density-toggle" onclick="toggleBetaDensity()" type="button">Compact</button>
         <button onclick="refreshBetaQbit()" type="button">Sync qBittorrent</button>
       </div>
+    </div>
+    <div class="beta-section-tabs" aria-label="Sections beta">
+      <button id="beta-section-overview" class="active" onclick="setBetaSection('overview')" type="button">Vue d'ensemble</button>
+      <button id="beta-section-graphs" onclick="setBetaSection('graphs')" type="button">Graphiques</button>
+      <button id="beta-section-qbit" onclick="setBetaSection('qbit')" type="button">qBittorrent</button>
+      <button id="beta-section-alerts" onclick="setBetaSection('alerts')" type="button">Alertes</button>
+      <button id="beta-section-classic" onclick="setBetaSection('classic')" type="button">Vue classique</button>
     </div>
     <div class="beta-workbench">
       <aside class="beta-panel">
@@ -1248,6 +1315,7 @@
         <div id="beta-tracker-list" class="beta-list"></div>
       </aside>
       <div class="beta-stack">
+        <section class="beta-section active" data-beta-section="overview">
         <div class="beta-grid-2">
           <section class="beta-panel">
             <h3>Comparaison tracker / qBittorrent</h3>
@@ -1258,15 +1326,32 @@
             <div id="beta-operation-status"></div>
           </section>
         </div>
+        </section>
+        <section class="beta-section" data-beta-section="graphs">
+        <section class="beta-panel">
+          <h3>Graphique global</h3>
+          <div style="display:flex; gap:8px; align-items:end; flex-wrap:wrap; margin-bottom:10px">
+            <div class="beta-field" style="max-width:180px"><label for="beta-global-period">Période</label><select id="beta-global-period" onchange="drawBetaGlobalChart()"><option value="day">Jour</option><option value="week">Semaine</option><option value="month">Mois</option></select></div>
+            <div class="beta-note">Totaux des trackers actifs : UP, DL et seedtime agrégés par période.</div>
+          </div>
+          <canvas id="beta-global-chart" class="beta-chart" width="1200" height="260"></canvas>
+        </section>
         <section class="beta-panel">
           <h3>Evolution globale et tracker selectionne</h3>
           <canvas id="beta-history-chart" class="beta-chart" width="1200" height="260"></canvas>
         </section>
+        <section class="beta-panel">
+          <h3>Calendrier des refreshs</h3>
+          <div class="beta-calendar-head">
+            <button class="beta-icon-btn" onclick="shiftBetaCalendar(-1)" type="button">Mois précédent</button>
+            <strong id="beta-calendar-title"></strong>
+            <button class="beta-icon-btn" onclick="shiftBetaCalendar(1)" type="button">Mois suivant</button>
+          </div>
+          <div id="beta-calendar" class="beta-calendar"></div>
+        </section>
+        </section>
+        <section class="beta-section" data-beta-section="qbit">
         <div class="beta-grid-2">
-          <section class="beta-panel">
-            <h3>Calendrier des refreshs</h3>
-            <div id="beta-calendar" class="beta-calendar"></div>
-          </section>
           <section class="beta-panel">
             <h3>Clients qBittorrent</h3>
             <div id="beta-qbit-clients"></div>
@@ -1285,6 +1370,8 @@
             <button class="beta-icon-btn primary" onclick="saveBetaSettings()" type="button">Enregistrer</button>
           </div>
         </section>
+        </section>
+        <section class="beta-section" data-beta-section="alerts">
         <div class="beta-grid-2">
           <section class="beta-panel">
             <h3>Alertes par tracker</h3>
@@ -1304,9 +1391,12 @@
             </div>
           </section>
         </div>
+        </section>
+        <section class="beta-section" data-beta-section="classic">
         <section class="beta-panel">
           <h3>Vue classique Beta</h3>
           <div id="beta-grid"></div>
+        </section>
         </section>
       </div>
     </div>
@@ -1659,7 +1749,8 @@
   let viewMode = 'cards'; // 'cards' | 'rows'
   let activeTab = 'dashboard'; // 'dashboard' | 'beta'
   let betaStatusFilter = 'all'; // 'all' | 'problems' | 'healthy'
-  let betaDensity = 'cozy'; // 'cozy' | 'compact'
+  let betaSection = 'overview';
+  let betaCalendarMonth = new Date();
   let betaOverview = null;
   let betaSettings = { qbitClients: [], notificationTargets: [], alertRules: [], defaults: {} };
   let betaHistory = [];
@@ -1820,8 +1911,44 @@
     return betaHistory.filter(row => row.trackerId === selected.id);
   }
 
-  function drawBetaHistoryChart() {
-    const canvas = document.getElementById('beta-history-chart');
+  function betaPeriodKey(date, period) {
+    const d = new Date(date);
+    if (Number.isNaN(d.getTime())) return '';
+    if (period === 'month') return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    if (period === 'week') {
+      const copy = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+      const day = copy.getUTCDay() || 7;
+      copy.setUTCDate(copy.getUTCDate() + 4 - day);
+      const yearStart = new Date(Date.UTC(copy.getUTCFullYear(), 0, 1));
+      const week = Math.ceil((((copy - yearStart) / 86400000) + 1) / 7);
+      return `${copy.getUTCFullYear()}-S${String(week).padStart(2, '0')}`;
+    }
+    return d.toISOString().slice(0, 10);
+  }
+
+  function latestSnapshotsByTrackerAndPeriod(period) {
+    const latest = new Map();
+    betaHistory.forEach(row => {
+      const key = betaPeriodKey(row.capturedAt, period);
+      if (!key) return;
+      const mapKey = `${key}::${row.trackerId}`;
+      const prev = latest.get(mapKey);
+      if (!prev || String(row.capturedAt) > String(prev.capturedAt)) latest.set(mapKey, row);
+    });
+    const grouped = new Map();
+    for (const row of latest.values()) {
+      const key = betaPeriodKey(row.capturedAt, period);
+      const item = grouped.get(key) || { label: key, uploadedBytes: 0, downloadedBytes: 0, seedTimeDays: 0 };
+      item.uploadedBytes += Number(row.fields?.uploadedBytes || 0);
+      item.downloadedBytes += Number(row.fields?.downloadedBytes || 0);
+      item.seedTimeDays += Number(row.fields?.seedTimeDays || row.fields?.seedTime || 0);
+      grouped.set(key, item);
+    }
+    return [...grouped.values()].sort((a, b) => a.label.localeCompare(b.label)).slice(-36);
+  }
+
+  function drawSeriesChart(canvasId, rows, seriesDefs, title) {
+    const canvas = document.getElementById(canvasId);
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     const w = canvas.width;
@@ -1829,20 +1956,15 @@
     ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--surface').trim() || '#1a1d27';
     ctx.fillRect(0, 0, w, h);
-    const rows = historyForSelectedTracker().slice(-80);
     if (rows.length < 2) {
       ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#6b7280';
-      ctx.fillText('Pas encore assez de snapshots pour tracer une evolution.', 18, 28);
+      ctx.font = '13px Segoe UI, sans-serif';
+      ctx.fillText('Pas encore assez de donnees pour tracer ce graphique.', 18, 30);
       return;
     }
-    const seriesDefs = [
-      { key: 'uploadedBytes', color: '#22c55e', label: 'UP' },
-      { key: 'downloadedBytes', color: '#3b82f6', label: 'DL' },
-      { key: 'ratio', color: '#eab308', label: 'Ratio' },
-    ];
-    const values = rows.flatMap(row => seriesDefs.map(def => Number(row.fields?.[def.key] ?? 0)).filter(Number.isFinite));
+    const values = rows.flatMap(row => seriesDefs.map(def => Number(def.value(row))).filter(Number.isFinite));
     const max = Math.max(...values, 1);
-    const pad = 30;
+    const pad = 34;
     ctx.strokeStyle = 'rgba(107,114,128,.35)';
     ctx.lineWidth = 1;
     for (let i = 0; i < 4; i++) {
@@ -1855,7 +1977,7 @@
       ctx.beginPath();
       rows.forEach((row, idx) => {
         const x = pad + ((w - pad * 2) * idx / (rows.length - 1));
-        const raw = Number(row.fields?.[def.key] ?? 0);
+        const raw = Number(def.value(row));
         const y = h - pad - ((Number.isFinite(raw) ? raw : 0) / max) * (h - pad * 2);
         if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       });
@@ -1863,28 +1985,77 @@
     });
     ctx.fillStyle = '#e2e4ed';
     ctx.font = '12px Segoe UI, sans-serif';
-    ctx.fillText(seriesDefs.map(def => def.label).join(' / '), pad, 18);
+    ctx.fillText(title, pad, 20);
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#6b7280';
+    ctx.fillText(rows[0].label || '', pad, h - 8);
+    ctx.fillText(rows[rows.length - 1].label || '', w - pad - 80, h - 8);
+  }
+
+  function drawBetaGlobalChart() {
+    const period = document.getElementById('beta-global-period')?.value || 'day';
+    const rows = latestSnapshotsByTrackerAndPeriod(period);
+    drawSeriesChart('beta-global-chart', rows, [
+      { color: '#22c55e', value: row => row.uploadedBytes },
+      { color: '#3b82f6', value: row => row.downloadedBytes },
+      { color: '#eab308', value: row => row.seedTimeDays },
+    ], 'Global: UP / DL / seedtime');
+  }
+
+  function drawBetaHistoryChart() {
+    const rows = historyForSelectedTracker().slice(-80);
+    const selected = selectedBetaTracker();
+    drawSeriesChart('beta-history-chart', rows.map(row => ({
+      label: String(row.capturedAt || '').slice(0, 10),
+      uploadedBytes: Number(row.fields?.uploadedBytes || 0),
+      downloadedBytes: Number(row.fields?.downloadedBytes || 0),
+      ratio: Number(row.fields?.ratio || computedRatio(row.fields || {}) || 0),
+    })), [
+      { color: '#22c55e', value: row => row.uploadedBytes },
+      { color: '#3b82f6', value: row => row.downloadedBytes },
+      { color: '#eab308', value: row => row.ratio },
+    ], `${selected?.name || 'Tracker'}: UP / DL / ratio`);
   }
 
   function renderBetaCalendar() {
     const container = document.getElementById('beta-calendar');
     if (!container) return;
     const rows = historyForSelectedTracker();
+    const title = document.getElementById('beta-calendar-title');
+    const month = new Date(betaCalendarMonth.getFullYear(), betaCalendarMonth.getMonth(), 1);
+    if (title) title.textContent = month.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
     const byDay = new Map();
     rows.forEach(row => {
       const day = String(row.capturedAt || '').slice(0, 10);
-      byDay.set(day, row.status === 'ok' ? 'ok' : 'bad');
+      const item = byDay.get(day) || { ok: 0, bad: 0 };
+      if (row.status === 'ok') item.ok += 1; else item.bad += 1;
+      byDay.set(day, item);
     });
-    const today = new Date();
-    const days = [];
-    for (let i = 55; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - i);
+    const firstDay = (month.getDay() + 6) % 7;
+    const start = new Date(month);
+    start.setDate(month.getDate() - firstDay);
+    const days = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map(day => `<div class="beta-weekday">${day}</div>`);
+    for (let i = 0; i < 42; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
       const key = d.toISOString().slice(0, 10);
-      const cls = byDay.get(key) || '';
-      days.push(`<div class="beta-day ${cls}" title="${key}${cls ? ` · ${cls}` : ''}"></div>`);
+      const item = byDay.get(key) || { ok: 0, bad: 0 };
+      const cls = item.bad > 0 ? 'bad' : (item.ok > 0 ? 'ok' : '');
+      const out = d.getMonth() === month.getMonth() ? '' : 'out';
+      days.push(`
+        <div class="beta-day ${cls} ${out}" title="${key}">
+          <span class="beta-day-num">${d.getDate()}</span>
+          <span class="beta-day-meta">
+            ${item.ok ? `<span class="beta-pill ok">${item.ok} OK</span>` : ''}
+            ${item.bad ? `<span class="beta-pill bad">${item.bad} KO</span>` : ''}
+          </span>
+        </div>`);
     }
     container.innerHTML = days.join('');
+  }
+
+  function shiftBetaCalendar(delta) {
+    betaCalendarMonth = new Date(betaCalendarMonth.getFullYear(), betaCalendarMonth.getMonth() + delta, 1);
+    renderBetaCalendar();
   }
 
   function trackerHostFromUrl(url) {
@@ -1993,6 +2164,7 @@
     renderBetaComparison();
     renderBetaOperationStatus();
     renderBetaCalendar();
+    drawBetaGlobalChart();
     drawBetaHistoryChart();
     renderBetaQbitClients();
     renderBetaAnnounceMappings();
@@ -2158,11 +2330,19 @@
       const btn = document.getElementById(`beta-filter-${filter}`);
       if (btn) btn.classList.toggle('active', betaStatusFilter === filter);
     });
-    const densityBtn = document.getElementById('beta-density-toggle');
-    if (densityBtn) {
-      densityBtn.classList.toggle('active', betaDensity === 'compact');
-      densityBtn.textContent = betaDensity === 'compact' ? 'Confort' : 'Compact';
-    }
+    document.querySelectorAll('[id^="beta-section-"]').forEach(btn => {
+      btn.classList.toggle('active', btn.id === `beta-section-${betaSection}`);
+    });
+    document.querySelectorAll('[data-beta-section]').forEach(section => {
+      section.classList.toggle('active', section.getAttribute('data-beta-section') === betaSection);
+    });
+  }
+
+  function setBetaSection(section) {
+    betaSection = ['graphs', 'qbit', 'alerts', 'classic'].includes(section) ? section : 'overview';
+    localStorage.setItem('tracker-dashboard-beta-section', betaSection);
+    renderBetaControls();
+    renderBetaLab();
   }
 
   function setActiveTab(tab) {
@@ -2189,15 +2369,8 @@
 
   function loadBetaSettings() {
     betaStatusFilter = localStorage.getItem('tracker-dashboard-beta-filter') || 'all';
-    betaDensity = localStorage.getItem('tracker-dashboard-beta-density') || 'cozy';
+    betaSection = localStorage.getItem('tracker-dashboard-beta-section') || 'overview';
     renderBetaControls();
-  }
-
-  function toggleBetaDensity() {
-    betaDensity = betaDensity === 'compact' ? 'cozy' : 'compact';
-    localStorage.setItem('tracker-dashboard-beta-density', betaDensity);
-    renderBetaControls();
-    renderGrid();
   }
 
   // Re-rend la grille a partir des dernieres stats (sans re-fetch), en preservant
@@ -2217,7 +2390,6 @@
     renderBetaControls();
 
     grid.classList.toggle('grid--rows', viewMode === 'rows');
-    grid.classList.toggle('beta-compact', activeTab === 'beta' && betaDensity === 'compact');
     grid.innerHTML = stats.length === 0
       ? '<div class="error-body">Aucun tracker dans ce filtre.</div>'
       : (viewMode === 'rows' ? renderRowsView(stats) : stats.map(renderCard).join(''));
