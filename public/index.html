@@ -443,6 +443,33 @@
     .beta-icon-btn:hover { border-color: var(--blue); color: var(--text); }
     .beta-icon-btn.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
     .beta-note { color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .beta-detail-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .beta-detail-stat {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      background: color-mix(in srgb, var(--bg) 65%, transparent);
+    }
+    .beta-detail-stat span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .4px;
+      margin-bottom: 5px;
+    }
+    .beta-detail-stat strong { font-size: 18px; }
+    .beta-link-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 10px 0 12px;
+    }
     @media (max-width: 980px) {
       .beta-workbench,
       .beta-grid-2,
@@ -1289,19 +1316,19 @@
     <div class="beta-toolbar">
       <div class="beta-title">
         <strong>Beta lab</strong>
-        <span>Comparaison trackers, qBittorrent, historique et alertes experimentales.</span>
+        <span>Comparaison trackers, clients BitTorrent, historique et alertes experimentales.</span>
       </div>
       <div class="beta-actions" aria-label="Controles beta">
         <button id="beta-filter-all" class="active" onclick="setBetaFilter('all')" type="button">Tous</button>
         <button id="beta-filter-problems" onclick="setBetaFilter('problems')" type="button">Problemes</button>
         <button id="beta-filter-healthy" onclick="setBetaFilter('healthy')" type="button">OK</button>
-        <button onclick="refreshBetaQbit()" type="button">Sync qBittorrent</button>
+        <button onclick="refreshBetaQbit()" type="button">Sync clients BitTorrent</button>
       </div>
     </div>
     <div class="beta-section-tabs" aria-label="Sections beta">
       <button id="beta-section-overview" class="active" onclick="setBetaSection('overview')" type="button">Vue d'ensemble</button>
       <button id="beta-section-graphs" onclick="setBetaSection('graphs')" type="button">Graphiques</button>
-      <button id="beta-section-qbit" onclick="setBetaSection('qbit')" type="button">qBittorrent</button>
+      <button id="beta-section-qbit" onclick="setBetaSection('qbit')" type="button">Clients BitTorrent</button>
       <button id="beta-section-alerts" onclick="setBetaSection('alerts')" type="button">Alertes</button>
       <button id="beta-section-classic" onclick="setBetaSection('classic')" type="button">Vue classique</button>
     </div>
@@ -1316,9 +1343,13 @@
       </aside>
       <div class="beta-stack">
         <section class="beta-section active" data-beta-section="overview">
+        <section class="beta-panel" style="margin-bottom:12px">
+          <h3>Fiche tracker</h3>
+          <div id="beta-tracker-page"></div>
+        </section>
         <div class="beta-grid-2">
           <section class="beta-panel">
-            <h3>Comparaison tracker / qBittorrent</h3>
+            <h3>Comparaison tracker / client BitTorrent</h3>
             <div id="beta-comparison"></div>
           </section>
           <section class="beta-panel">
@@ -1353,7 +1384,7 @@
         <section class="beta-section" data-beta-section="qbit">
         <div class="beta-grid-2">
           <section class="beta-panel">
-            <h3>Clients qBittorrent</h3>
+            <h3>Clients BitTorrent</h3>
             <div id="beta-qbit-clients"></div>
             <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap">
               <button class="beta-icon-btn" onclick="addBetaQbitClient()" type="button">Ajouter</button>
@@ -1362,8 +1393,8 @@
           </section>
         </div>
         <section class="beta-panel">
-          <h3>Liaisons announce qBittorrent</h3>
-          <p class="beta-note" style="margin-bottom:10px">Lie les domaines d'annonce qBittorrent aux trackers actifs quand les URLs d'announce ne correspondent pas aux URLs des sites.</p>
+          <h3>Liaisons announce BitTorrent</h3>
+          <p class="beta-note" style="margin-bottom:10px">Lie les domaines d'annonce des clients BitTorrent aux trackers actifs quand les URLs d'announce ne correspondent pas aux URLs des sites.</p>
           <div id="beta-announce-mappings"></div>
           <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap">
             <button class="beta-icon-btn" onclick="addBetaAnnounceMapping()" type="button">Ajouter une liaison</button>
@@ -1887,6 +1918,92 @@
       </table>`;
   }
 
+  function renderBetaTrackerPage() {
+    const container = document.getElementById('beta-tracker-page');
+    if (!container) return;
+    const stat = selectedBetaTracker();
+    if (!stat) {
+      container.innerHTML = '<p class="beta-note">Selectionne un tracker dans la liste.</p>';
+      return;
+    }
+    const configured = trackerConfig.find(t => t.id === stat.id);
+    const trackerUrl = stat.trackerUrl || configured?.baseUrl || '';
+    const host = trackerHostFromUrl(trackerUrl);
+    const qbits = (betaOverview?.qbitStats || []).filter(item => item.trackerId === stat.id || item.trackerHost === host);
+    const torrents = qbits.flatMap(item => (item.torrents || []).map(torrent => ({ ...torrent, clientLabel: item.clientLabel, clientBaseUrl: item.clientBaseUrl })));
+    const ratio = computedRatio(stat.fields);
+    const buffer = formatBuffer(stat.fields, statByteUnit(stat));
+    const history = historyForSelectedTracker();
+    const recentErrors = history.filter(row => row.status !== 'ok').slice(-6).reverse();
+    const rules = (betaSettings.alertRules || []).filter(rule => rule.trackerId === stat.id);
+    const targets = new Map((betaSettings.notificationTargets || []).map(target => [target.id, target]));
+
+    container.innerHTML = `
+      <div class="beta-detail-grid">
+        <div class="beta-detail-stat"><span>Statut</span><strong>${escapeHtml(stat.stale ? 'donnees anciennes' : stat.status)}</strong></div>
+        <div class="beta-detail-stat"><span>Ratio</span><strong>${hasStatValue(ratio) ? formatRatio(ratio) : '-'}</strong></div>
+        <div class="beta-detail-stat"><span>Buffer</span><strong>${Array.isArray(buffer) ? buffer.join(' ') : buffer}</strong></div>
+        <div class="beta-detail-stat"><span>Seed</span><strong>${formatCount(stat.fields.seeding ?? stat.fields.seedTimeDays ?? stat.fields.seedTime)}</strong></div>
+        <div class="beta-detail-stat"><span>Torrents client</span><strong>${torrents.length}</strong></div>
+      </div>
+      <div class="beta-link-row">
+        ${trackerUrl ? `<a class="beta-icon-btn" href="${escapeHtml(trackerUrl)}" target="_blank" rel="noreferrer noopener">Ouvrir le tracker</a>` : ''}
+        ${qbits.map(item => `<a class="beta-icon-btn" href="${escapeHtml(item.clientBaseUrl)}" target="_blank" rel="noreferrer noopener">Ouvrir ${escapeHtml(item.clientLabel)}</a>`).join('')}
+        <button class="beta-icon-btn" onclick="testTrackerProxy('${escapeHtml(stat.id)}')" type="button">Tester via proxy serveur</button>
+        <span id="beta-proxy-check-${escapeHtml(stat.id)}" class="beta-note"></span>
+      </div>
+      <div class="beta-grid-2">
+        <div>
+          <h3>Erreurs recentes</h3>
+          ${stat.error || stat.stale ? `<div class="error-reason">${escapeHtml(stat.stale?.error || stat.error || '')}</div>` : ''}
+          <table class="beta-mini-table">
+            <thead><tr><th>Date</th><th>Erreur</th></tr></thead>
+            <tbody>${recentErrors.map(row => `<tr><td>${formatDateTime(row.capturedAt)}</td><td>${escapeHtml(row.error || row.status)}</td></tr>`).join('') || '<tr><td colspan="2" class="cell-muted">Aucune erreur historisee.</td></tr>'}</tbody>
+          </table>
+        </div>
+        <div>
+          <h3>Notifications configurees</h3>
+          <table class="beta-mini-table">
+            <thead><tr><th>Alerte</th><th>Condition</th><th>Destinations</th></tr></thead>
+            <tbody>${rules.map(rule => {
+              const destinationLabels = (rule.targetIds || []).map(id => targets.get(id)?.label).filter(Boolean);
+              return `<tr><td>${escapeHtml(rule.kind)}${rule.enabled === false ? ' (off)' : ''}</td><td>${escapeHtml(rule.operator)} ${escapeHtml(rule.threshold)}</td><td>${escapeHtml(destinationLabels.join(', ') || 'Toutes actives / non precise')}</td></tr>`;
+            }).join('') || '<tr><td colspan="3" class="cell-muted">Aucune alerte individuelle pour ce tracker.</td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>
+      <div style="margin-top:12px">
+        <h3>Torrents lies dans les clients BitTorrent</h3>
+        <table class="beta-mini-table">
+          <thead><tr><th>Client</th><th>Torrent</th><th>Etat</th><th>Taille</th><th>Progression</th><th>UP</th><th>DL</th><th>Ratio</th></tr></thead>
+          <tbody>${torrents.map(torrent => `
+            <tr>
+              <td>${escapeHtml(torrent.clientLabel)}</td>
+              <td title="${escapeHtml(torrent.hash)}">${escapeHtml(torrent.name || torrent.hash || '-')}</td>
+              <td>${escapeHtml(torrent.state || '-')}</td>
+              <td>${bytesText(torrent.sizeBytes)}</td>
+              <td>${Math.round((Number(torrent.progress) || 0) * 100)}%</td>
+              <td>${bytesText(torrent.uploadedBytes)}</td>
+              <td>${bytesText(torrent.downloadedBytes)}</td>
+              <td>${torrent.ratio === null ? '-' : formatRatio(torrent.ratio)}</td>
+            </tr>
+          `).join('') || '<tr><td colspan="8" class="cell-muted">Aucun torrent lie. Verifie les liaisons announce BitTorrent.</td></tr>'}</tbody>
+        </table>
+      </div>`;
+  }
+
+  async function testTrackerProxy(trackerId) {
+    const el = document.getElementById(`beta-proxy-check-${trackerId}`);
+    if (el) el.textContent = 'Test en cours...';
+    try {
+      const r = await fetch(`/api/beta/trackers/${encodeURIComponent(trackerId)}/proxy-check`);
+      const data = await r.json();
+      if (el) el.textContent = data.ok ? `Proxy OK HTTP ${data.status} (${data.ms} ms)` : `Proxy KO: ${data.error || 'HTTP ' + data.status}`;
+    } catch (e) {
+      if (el) el.textContent = 'Proxy KO: ' + e.message;
+    }
+  }
+
   function renderBetaOperationStatus() {
     const container = document.getElementById('beta-operation-status');
     if (!container) return;
@@ -2069,14 +2186,15 @@
     const clients = betaSettings.qbitClients || [];
     container.innerHTML = clients.map((client, idx) => `
       <div class="beta-form-row" data-beta-qbit="${idx}">
+        <div class="beta-field"><label>Type</label><select data-field="type"><option value="qbittorrent" ${client.type !== 'rutorrent' ? 'selected' : ''}>qBittorrent</option><option value="rutorrent" ${client.type === 'rutorrent' ? 'selected' : ''}>ruTorrent / rTorrent</option></select></div>
         <div class="beta-field"><label>Nom</label><input data-field="label" value="${escapeHtml(client.label || '')}" placeholder="Seedbox principale"></div>
-        <div class="beta-field"><label>URL WebUI</label><input data-field="baseUrl" value="${escapeHtml(client.baseUrl || '')}" placeholder="https://qb.example"></div>
+        <div class="beta-field"><label>URL API</label><input data-field="baseUrl" value="${escapeHtml(client.baseUrl || '')}" placeholder="qBit: https://qb.example · ruTorrent: https://rt.example/RPC2"></div>
         <div class="beta-field"><label>Utilisateur</label><input data-field="username" value="${escapeHtml(client.username || '')}"></div>
         <div class="beta-field"><label>Mot de passe</label><input data-field="password" type="password" value="${escapeHtml(client.password || '')}"></div>
         <div class="beta-field"><label>Actif</label><select data-field="enabled"><option value="true" ${client.enabled !== false ? 'selected' : ''}>Oui</option><option value="false" ${client.enabled === false ? 'selected' : ''}>Non</option></select></div>
         <div style="display:flex; gap:6px"><button class="beta-icon-btn" onclick="testBetaQbitClient(${idx})" type="button">Tester</button><button class="beta-icon-btn" onclick="removeBetaQbitClient(${idx})" type="button">X</button></div>
       </div>
-    `).join('') || '<p class="beta-note">Ajoute un ou plusieurs clients qBittorrent pour comparer les stats locales aux stats des sites.</p>';
+    `).join('') || '<p class="beta-note">Ajoute un ou plusieurs clients qBittorrent ou ruTorrent/rTorrent pour comparer les stats locales aux stats des sites.</p>';
   }
 
   function renderBetaAnnounceMappings() {
@@ -2104,7 +2222,7 @@
     container.innerHTML = `
       <table class="beta-mini-table" style="margin-bottom:10px">
         <thead><tr><th>Host detecte</th><th>Tracker lie</th><th></th></tr></thead>
-        <tbody>${detectedRows || '<tr><td colspan="3" class="cell-muted">Aucun host détecté. Lancer Sync qBittorrent après avoir configuré un client.</td></tr>'}</tbody>
+        <tbody>${detectedRows || '<tr><td colspan="3" class="cell-muted">Aucun host détecté. Lance Sync clients BitTorrent après avoir configuré un client.</td></tr>'}</tbody>
       </table>
       ${editRows || '<p class="beta-note">Aucune liaison manuelle pour le moment.</p>'}
     `;
@@ -2161,6 +2279,7 @@
 
   function renderBetaLab() {
     renderBetaTrackerList();
+    renderBetaTrackerPage();
     renderBetaComparison();
     renderBetaOperationStatus();
     renderBetaCalendar();
@@ -2175,6 +2294,7 @@
   function collectBetaSettingsFromDom() {
     const qbitClients = Array.from(document.querySelectorAll('[data-beta-qbit]')).map((row, idx) => ({
       id: betaSettings.qbitClients?.[idx]?.id || genId(),
+      type: row.querySelector('[data-field="type"]').value,
       label: row.querySelector('[data-field="label"]').value.trim(),
       baseUrl: row.querySelector('[data-field="baseUrl"]').value.trim(),
       username: row.querySelector('[data-field="username"]').value.trim(),
@@ -2212,7 +2332,7 @@
 
   function addBetaQbitClient() {
     betaSettings = collectBetaSettingsFromDom();
-    betaSettings.qbitClients.push({ id: genId(), label: 'qBittorrent', baseUrl: '', username: '', password: '', enabled: true });
+    betaSettings.qbitClients.push({ id: genId(), type: 'qbittorrent', label: 'qBittorrent', baseUrl: '', username: '', password: '', enabled: true });
     renderBetaQbitClients();
   }
 
@@ -2301,14 +2421,14 @@
       body: JSON.stringify(client),
     });
     const data = await r.json();
-    alert(data.ok ? `qBittorrent OK: ${data.torrentCount} torrents sur ${data.trackerCount} tracker(s)` : `qBittorrent KO: ${data.error}`);
+    alert(data.ok ? `Client OK: ${data.torrentCount} torrents sur ${data.trackerCount} tracker(s)` : `Client KO: ${data.error}`);
   }
 
   async function refreshBetaQbit() {
     const r = await fetch('/api/beta/qbit/refresh', { method: 'POST' });
     const data = await r.json();
     if (!data.ok) {
-      alert(data.error || 'Refresh qBittorrent KO');
+      alert(data.error || 'Refresh clients BitTorrent KO');
       return;
     }
     await loadBetaData();

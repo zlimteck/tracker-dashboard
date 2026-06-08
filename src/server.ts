@@ -7,7 +7,7 @@ import { fetchTracker, invalidateAllSessions, invalidateSession } from './fetche
 import { resetBrowserProfile, closeBrowserSession } from './browserFetcher.js';
 import { type FieldExtractor, type TrackerConfig, type TrackerStats } from './types.js';
 import {
-  loadProxySettings, saveProxySettings, buildProxyConfig, logProxyStatus,
+  loadProxySettings, saveProxySettings, buildProxyConfig, logProxyStatus, resolveProxyForTracker, ensureProxyReady,
   loadProxyOverrides, saveProxyOverrides, toSshConfig,
   type ProxySettings, type ProxyOverride,
 } from './proxy.js';
@@ -114,6 +114,7 @@ const pendingScheduledRuns = new Set<string>();
 
 interface BetaQbitClient {
   id: string;
+  type?: 'qbittorrent' | 'rutorrent';
   label: string;
   baseUrl: string;
   username?: string;
@@ -160,6 +161,7 @@ interface BetaSettings {
 interface QbitTrackerAggregate {
   clientId: string;
   clientLabel: string;
+  clientBaseUrl: string;
   trackerHost: string;
   torrentCount: number;
   seedingCount: number;
@@ -168,6 +170,16 @@ interface QbitTrackerAggregate {
   downloadedBytes: number;
   ratio: number | null;
   totalSizeBytes: number;
+  torrents: Array<{
+    hash: string;
+    name: string;
+    state: string;
+    progress: number;
+    sizeBytes: number;
+    uploadedBytes: number;
+    downloadedBytes: number;
+    ratio: number | null;
+  }>;
 }
 
 const BETA_SETTINGS_KEY = 'beta_settings';
@@ -1613,14 +1625,16 @@ function saveBetaSettingsPayload(raw: unknown): BetaSettings {
   const previousClients = new Map(current.qbitClients.map(client => [client.id, client]));
   const previousTargets = new Map(current.notificationTargets.map(target => [target.id, target]));
 
-  const qbitClients = Array.isArray(body.qbitClients) ? body.qbitClients.map(rawClient => {
+  const qbitClients: BetaQbitClient[] = Array.isArray(body.qbitClients) ? body.qbitClients.map(rawClient => {
     const client = rawClient as Partial<BetaQbitClient>;
     const id = typeof client.id === 'string' && client.id ? client.id : crypto.randomUUID();
     const previous = previousClients.get(id);
     const password = client.password === '••••••••' ? (previous?.password ?? '') : (client.password ?? '');
+    const type: BetaQbitClient['type'] = client.type === 'rutorrent' ? 'rutorrent' : 'qbittorrent';
     return {
       id,
-      label: String(client.label || 'qBittorrent').trim().slice(0, 80),
+      type,
+      label: String(client.label || (type === 'rutorrent' ? 'ruTorrent' : 'qBittorrent')).trim().slice(0, 80),
       baseUrl: String(client.baseUrl || '').trim().replace(/\/+$/, ''),
       username: String(client.username || '').trim(),
       password,
@@ -1740,6 +1754,7 @@ async function fetchQbitClient(client: BetaQbitClient): Promise<QbitTrackerAggre
     const existing = groups.get(host) ?? {
       clientId: client.id,
       clientLabel: client.label,
+      clientBaseUrl: baseUrl,
       trackerHost: host,
       torrentCount: 0,
       seedingCount: 0,
@@ -1748,6 +1763,7 @@ async function fetchQbitClient(client: BetaQbitClient): Promise<QbitTrackerAggre
       downloadedBytes: 0,
       ratio: null,
       totalSizeBytes: 0,
+      torrents: [],
     };
     const state = String(torrent.state || '');
     const up = Number(torrent.uploaded ?? torrent.uploaded_session ?? 0);
@@ -1758,6 +1774,16 @@ async function fetchQbitClient(client: BetaQbitClient): Promise<QbitTrackerAggre
     existing.uploadedBytes += Number.isFinite(up) ? up : 0;
     existing.downloadedBytes += Number.isFinite(down) ? down : 0;
     existing.totalSizeBytes += Number(torrent.size ?? 0) || 0;
+    existing.torrents.push({
+      hash: String(torrent.hash || ''),
+      name: String(torrent.name || ''),
+      state,
+      progress: Number(torrent.progress ?? 0) || 0,
+      sizeBytes: Number(torrent.size ?? 0) || 0,
+      uploadedBytes: Number.isFinite(up) ? up : 0,
+      downloadedBytes: Number.isFinite(down) ? down : 0,
+      ratio: Number.isFinite(Number(torrent.ratio)) ? Number(torrent.ratio) : null,
+    });
     groups.set(host, existing);
   }
   for (const item of groups.values()) {
@@ -1768,11 +1794,112 @@ async function fetchQbitClient(client: BetaQbitClient): Promise<QbitTrackerAggre
   return [...groups.values()].sort((a, b) => a.trackerHost.localeCompare(b.trackerHost));
 }
 
+function xmlRpcValue(value: string): string {
+  return `<value><string>${value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</string></value>`;
+}
+
+async function rtorrentRpc(client: BetaQbitClient, method: string, params: string[] = []): Promise<string> {
+  const body = `<?xml version="1.0"?><methodCall><methodName>${method}</methodName><params>${params.map(value => `<param>${xmlRpcValue(value)}</param>`).join('')}</params></methodCall>`;
+  const response = await axios.post(client.baseUrl.replace(/\/+$/, ''), body, {
+    timeout: 12000,
+    auth: client.username || client.password ? { username: client.username ?? '', password: client.password ?? '' } : undefined,
+    headers: { 'Content-Type': 'text/xml' },
+  });
+  return String(response.data || '');
+}
+
+function parseXmlRpcScalars(xml: string): string[] {
+  const values: string[] = [];
+  const re = /<(?:string|i4|i8|int|double|boolean)>([\s\S]*?)<\/(?:string|i4|i8|int|double|boolean)>/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(xml))) {
+    values.push(match[1]
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&')
+      .trim());
+  }
+  return values;
+}
+
+async function fetchRutorrentClient(client: BetaQbitClient): Promise<QbitTrackerAggregate[]> {
+  await rtorrentRpc(client, 'download_list', ['main']);
+  const xml = await rtorrentRpc(client, 'd.multicall2', [
+    '',
+    'main',
+    'd.hash=',
+    'd.name=',
+    'd.state=',
+    'd.size_bytes=',
+    'd.up.total=',
+    'd.down.total=',
+    'd.ratio=',
+    'd.complete=',
+  ]);
+  const scalars = parseXmlRpcScalars(xml);
+  const groups = new Map<string, QbitTrackerAggregate>();
+  for (let i = 0; i + 7 < scalars.length; i += 8) {
+    const [hash, name, stateRaw, sizeRaw, upRaw, downRaw, ratioRaw, completeRaw] = scalars.slice(i, i + 8);
+    let announce = '';
+    try {
+      const trackersXml = await rtorrentRpc(client, 't.multicall', [hash, '', 't.url=']);
+      announce = parseXmlRpcScalars(trackersXml).find(value => /^https?:\/\//i.test(value)) || '';
+    } catch {
+      // Some ruTorrent/rTorrent setups disable tracker multicalls; keep torrent under unknown.
+    }
+    const host = trackerHost(announce);
+    const up = Number(upRaw) || 0;
+    const down = Number(downRaw) || 0;
+    const complete = completeRaw === '1';
+    const existing = groups.get(host) ?? {
+      clientId: client.id,
+      clientLabel: client.label,
+      clientBaseUrl: client.baseUrl.replace(/\/+$/, ''),
+      trackerHost: host,
+      torrentCount: 0,
+      seedingCount: 0,
+      leechingCount: 0,
+      uploadedBytes: 0,
+      downloadedBytes: 0,
+      ratio: null,
+      totalSizeBytes: 0,
+      torrents: [],
+    };
+    existing.torrentCount += 1;
+    existing.seedingCount += complete ? 1 : 0;
+    existing.leechingCount += complete ? 0 : 1;
+    existing.uploadedBytes += up;
+    existing.downloadedBytes += down;
+    existing.totalSizeBytes += Number(sizeRaw) || 0;
+    existing.torrents.push({
+      hash,
+      name,
+      state: stateRaw === '1' ? (complete ? 'seeding' : 'leeching') : 'stopped',
+      progress: complete ? 1 : 0,
+      sizeBytes: Number(sizeRaw) || 0,
+      uploadedBytes: up,
+      downloadedBytes: down,
+      ratio: Number.isFinite(Number(ratioRaw)) ? Number(ratioRaw) / 1000 : null,
+    });
+    groups.set(host, existing);
+  }
+  for (const item of groups.values()) {
+    item.ratio = item.downloadedBytes > 0
+      ? item.uploadedBytes / item.downloadedBytes
+      : (item.uploadedBytes > 0 ? Number.POSITIVE_INFINITY : 0);
+  }
+  return [...groups.values()].sort((a, b) => a.trackerHost.localeCompare(b.trackerHost));
+}
+
+async function fetchTorrentClient(client: BetaQbitClient): Promise<QbitTrackerAggregate[]> {
+  return client.type === 'rutorrent' ? fetchRutorrentClient(client) : fetchQbitClient(client);
+}
+
 async function refreshBetaQbitStats(settings = loadBetaSettings()): Promise<QbitTrackerAggregate[]> {
   const enabled = settings.qbitClients.filter(client => client.enabled);
   const results: QbitTrackerAggregate[] = [];
   for (const client of enabled) {
-    results.push(...await fetchQbitClient(client));
+    results.push(...await fetchTorrentClient(client));
   }
   betaQbitStats = results;
   betaQbitLastRefresh = new Date().toISOString();
@@ -1990,13 +2117,14 @@ export async function start(): Promise<void> {
       const current = loadBetaSettings().qbitClients.find(item => item.id === raw.id);
       const client: BetaQbitClient = {
         id: raw.id || 'test',
-        label: String(raw.label || 'qBittorrent').trim() || 'qBittorrent',
+        type: raw.type === 'rutorrent' ? 'rutorrent' : 'qbittorrent',
+        label: String(raw.label || (raw.type === 'rutorrent' ? 'ruTorrent' : 'qBittorrent')).trim() || 'Client BitTorrent',
         baseUrl: String(raw.baseUrl || '').trim().replace(/\/+$/, ''),
         username: String(raw.username || '').trim(),
         password: raw.password === '••••••••' ? (current?.password ?? '') : (raw.password ?? ''),
         enabled: true,
       };
-      const stats = await fetchQbitClient(client);
+      const stats = await fetchTorrentClient(client);
       res.json({ ok: true, trackerCount: stats.length, torrentCount: stats.reduce((sum, item) => sum + item.torrentCount, 0) });
     } catch (err: unknown) {
       res.json({ ok: false, error: err instanceof Error ? err.message : String(err) });
@@ -2022,6 +2150,30 @@ export async function start(): Promise<void> {
       res.json({ ok: true });
     } catch (err: unknown) {
       res.json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.get('/api/beta/trackers/:trackerId/proxy-check', async (req, res) => {
+    trackers = normalizeTrackerConfigs();
+    const tracker = trackers.find(item => item.id === req.params.trackerId)
+      ?? loadTrackerDefinitionFile(req.params.trackerId);
+    if (!tracker) return res.status(404).json({ ok: false, error: 'Tracker introuvable' });
+    try {
+      await ensureProxyReady(tracker.id);
+      const started = Date.now();
+      const response = await axios.get(tracker.baseUrl, {
+        ...buildProxyConfig(resolveProxyForTracker(tracker.id)),
+        timeout: 10000,
+        validateStatus: () => true,
+      });
+      res.json({
+        ok: response.status < 500,
+        status: response.status,
+        ms: Date.now() - started,
+        url: tracker.baseUrl,
+      });
+    } catch (err: unknown) {
+      res.json({ ok: false, error: err instanceof Error ? err.message : String(err), url: tracker.baseUrl });
     }
   });
 
