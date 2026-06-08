@@ -520,6 +520,37 @@ async function revealMilkieStats(page: Page): Promise<void> {
   }
 }
 
+// Page anti-bot / challenge JS (Cloudflare, DDoS-Guard...) affichee a la place du
+// contenu attendu — typiquement quand il manque un cookie cf_clearance ou que l'IP
+// de sortie ne correspond pas a celle ayant cree la session.
+function looksAntiBot(html: string): boolean {
+  const h = html.toLowerCase();
+  return h.includes('cf-turnstile') ||
+    h.includes('challenge-platform') ||
+    h.includes('just a moment') ||
+    h.includes('/cdn-cgi/challenge-platform') ||
+    h.includes('attention required') ||
+    h.includes('ddos-guard');
+}
+
+// Dump leger d'une page navigateur pour diagnostic (meme dossier que les autres dumps).
+function writeBrowserDump(tracker: TrackerConfig, url: string, html: string, reason: string): string | null {
+  try {
+    const dir = path.join(process.cwd(), 'config', 'debug');
+    fs.mkdirSync(dir, { recursive: true });
+    const safeId = tracker.id.replace(/[^a-z0-9_-]/gi, '_');
+    const htmlPath = path.join(dir, `${safeId}-${reason}-last.html`);
+    fs.writeFileSync(htmlPath, html);
+    fs.writeFileSync(htmlPath.replace(/\.html$/, '.json'), JSON.stringify({
+      trackerId: tracker.id, trackerName: tracker.name, reason, url,
+      dumpedAt: new Date().toISOString(), htmlLength: html.length,
+    }, null, 2));
+    return htmlPath;
+  } catch {
+    return null;
+  }
+}
+
 async function safeContent(page: Page): Promise<string> {
   let lastError: unknown;
   for (let i = 0; i < 10; i += 1) {
@@ -545,10 +576,16 @@ async function ensureLoggedIn(
   // Mode cookie uniquement : on ne soumet JAMAIS le formulaire (sinon, sur des sites
   // comme MyAnonamouse, chaque tentative cree une session et finit par bloquer le compte).
   // Le cookie injecte ne suffit pas (page de login detectee) -> on ECHOUE TOUT DE SUITE
-  // avec un message clair, au lieu de poursuivre (2e navigation + attentes Turnstile qui
-  // font traîner jusqu'au timeout de 90s).
+  // avec un message clair + un dump pour diagnostic, au lieu de poursuivre.
   if (tracker.login.cookieOnly) {
-    throw new Error('Session non authentifiee : cookie de session absent, incomplet ou expire (login automatique desactive pour ce tracker - fournir un cookie complet)');
+    const currentUrl = page.url();
+    const dump = writeBrowserDump(tracker, currentUrl, html, 'cookieonly');
+    const suffix = dump ? ` - dump: ${dump}` : '';
+    if (looksAntiBot(html)) {
+      throw new Error(`Session non authentifiee : challenge anti-bot/Cloudflare affiche malgre le cookie (il manque sans doute un cookie cf_clearance, ou l'IP de sortie differe de celle qui a cree la session)${suffix}`);
+    }
+    const matched = tracker.login.failurePatterns.find(p => html.includes(p));
+    throw new Error(`Session non authentifiee : page de login detectee (motif "${matched ?? '?'}") malgre le cookie injecte. Causes frequentes : session liee a l'IP (sortir par la meme IP via proxy/SSH), cookie incomplet, ou expire${suffix}`);
   }
 
   const loginUrl = resolveUrl(tracker.baseUrl, tracker.login.url);
