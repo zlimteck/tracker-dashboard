@@ -239,6 +239,25 @@ function isAnubisChallenge(html: string): boolean {
     html.includes("Verification que vous n&#39;etes pas un robot");
 }
 
+// ─── 2FA en deux etapes (Laravel Fortify / UNIT3D) ─────────────────────────────
+// Apres le login user+password, certains trackers redirigent vers une page dediee
+// "two-factor-challenge" ou il faut soumettre le code TOTP avec un nouveau CSRF.
+function isTwoFactorPage(html: string): boolean {
+  return /two-factor-challenge/i.test(html) ||
+    /Two[\s-]?Factor Authentication/i.test(html) ||
+    (/name=["']code["']/i.test(html) && /recovery_code/i.test(html));
+}
+
+function extractCsrfToken(html: string): string {
+  const m = /(?:name="_token"[^>]*?\svalue="|name="csrf-token"[^>]*?\scontent=")(?<value>[^"]+)"/.exec(html);
+  return m?.groups?.['value'] ?? '';
+}
+
+function extractFormAction(html: string): string {
+  const m = /<form[^>]*\baction=["']([^"']+)["']/i.exec(html);
+  return m?.[1] ?? '';
+}
+
 // Page anti-bot / challenge JS (Cloudflare & co) : signaux frequents quand l'IP du
 // client est filtree -> la vraie page (avec le token CSRF) n'est jamais servie.
 function isAntiBotPage(html: string): boolean {
@@ -447,15 +466,48 @@ async function doLogin(
   await storeResponseCookies(jar, loginRes);
 
   let verificationHtml = loginRes.data;
+  let landedUrl = loginUrl;
   const location = loginRes.headers.location;
   if (loginRes.status >= 300 && loginRes.status < 400 && location) {
-    const redirectedUrl = resolveUrl(loginUrl, Array.isArray(location) ? location[0] : location);
-    const redirectedRes = await client.get<string>(redirectedUrl, {
+    landedUrl = resolveUrl(loginUrl, Array.isArray(location) ? location[0] : location);
+    const redirectedRes = await client.get<string>(landedUrl, {
       responseType: 'text',
       maxRedirects: 0,
     });
     await storeResponseCookies(jar, redirectedRes);
     verificationHtml = redirectedRes.data;
+  }
+
+  // ── 3bis. 2FA en deux etapes (Fortify/UNIT3D) ───────────────────────────────
+  if (isTwoFactorPage(verificationHtml)) {
+    if (!vars.otp) {
+      const dumpPath = writeLoginDebugDump(tracker, landedUrl, verificationHtml, { reason: '2fa-no-secret' });
+      const suffix = dumpPath ? ` - dump: ${dumpPath}` : '';
+      throw new Error(`2FA requise par le tracker mais aucun secret TOTP enregistre — renseigne le secret 2FA dans Options avancees${suffix}`);
+    }
+    const token = extractCsrfToken(verificationHtml);
+    const action = extractFormAction(verificationHtml);
+    const challengeUrl = action ? resolveUrl(landedUrl, action) : (landedUrl !== loginUrl ? landedUrl : resolveUrl(base, 'two-factor-challenge'));
+    const twoFaBody: Record<string, string> = { [cfg.otpField || 'code']: vars.otp };
+    if (token) twoFaBody['_token'] = token;
+    const twoFaRes = await client.post<string>(challengeUrl, new URLSearchParams(twoFaBody).toString(), {
+      responseType: 'text',
+      maxRedirects: 0,
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Origin': new URL(base).origin,
+        'Referer': challengeUrl,
+      },
+    });
+    await storeResponseCookies(jar, twoFaRes);
+    verificationHtml = twoFaRes.data;
+    const twoFaLoc = twoFaRes.headers.location;
+    if (twoFaRes.status >= 300 && twoFaRes.status < 400 && twoFaLoc) {
+      const after2faUrl = resolveUrl(challengeUrl, Array.isArray(twoFaLoc) ? twoFaLoc[0] : twoFaLoc);
+      const after2faRes = await client.get<string>(after2faUrl, { responseType: 'text', maxRedirects: 0 });
+      await storeResponseCookies(jar, after2faRes);
+      verificationHtml = after2faRes.data;
+    }
   }
 
   const failed = hasFailurePattern(verificationHtml, cfg.failurePatterns);
@@ -682,6 +734,27 @@ export async function fetchTracker(
         timeoutMs: 30_000,
       });
       if (!postRes) return null;
+
+      // 2FA en deux etapes (Fortify/UNIT3D) : si on a atterri sur la page de challenge
+      if (isTwoFactorPage(postRes.body)) {
+        if (!cvars.otp) return null; // pas de secret -> repli axios (message clair)
+        const token = extractCsrfToken(postRes.body);
+        const action = extractFormAction(postRes.body);
+        const challengeUrl = action ? resolveUrl(base, action) : resolveUrl(base, 'two-factor-challenge');
+        const twoFaBody: Record<string, string> = { [cfg.otpField || 'code']: cvars.otp };
+        if (token) twoFaBody['_token'] = token;
+        const twoFaRes = await sess.request(challengeUrl, {
+          method: 'POST',
+          data: new URLSearchParams(twoFaBody).toString(),
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Origin': new URL(base).origin,
+            'Referer': challengeUrl,
+          },
+          timeoutMs: 30_000,
+        });
+        if (!twoFaRes) return null;
+      }
 
       const url = resolveUrl(base, interpolate(tracker.fetch.url, cvars));
       const fetchRes = await sess.request(url, { headers: { Referer: loginUrl }, timeoutMs: 30_000 });

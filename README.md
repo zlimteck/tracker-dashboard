@@ -69,8 +69,9 @@ Renseignez le **secret 2FA** (la clé base32 affichée à côté du QR code lors
 
 - Le secret est stocké côté serveur et n'est jamais renvoyé en clair par l'API (seul un indicateur de présence est exposé).
 - Le code est calculé en local (RFC 6238, HMAC-SHA1, 6 chiffres, fenêtre de 30 s) ; aucun service externe n'est sollicité.
-- En mode navigateur, le code est saisi automatiquement dans le champ du formulaire (`two_step_code` pour UNIT3D, sinon `code`/`otp`/`totp`/`mfa`, ou le champ précisé par `otpField` dans la définition du tracker).
-- En mode HTTP, utilisez le placeholder `{{otp}}` dans le corps de login, ou définissez `login.otpField` pour une injection automatique.
+- **Flux en deux étapes** (Laravel Fortify / UNIT3D) : après le login identifiant + mot de passe, si le tracker redirige vers sa page de challenge 2FA (`two-factor-challenge`), le dashboard y soumet automatiquement le code (champ `code`) avec le CSRF de cette page. Pris en charge dans les trois modes : HTTP (axios), curl-impersonate et navigateur.
+- **Flux en une étape** : si le code se saisit dans le formulaire de login lui-même, définissez `login.otpField` (le code y est injecté) ou utilisez le placeholder `{{otp}}` dans le corps de login.
+- Si un tracker exige le 2FA mais qu'aucun secret n'est enregistré, l'erreur le précise explicitement.
 
 Laissez le champ vide pour les trackers sans 2FA.
 

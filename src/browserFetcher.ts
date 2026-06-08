@@ -734,6 +734,34 @@ async function ensureLoggedIn(
   await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
   await waitForAnubis(page);
   await waitForLiveView(page);
+
+  // ── 2FA en deux etapes (Fortify/UNIT3D) : page de challenge apres le password ──
+  if (totpSecret) {
+    const postHtml = await safeContent(page);
+    const onTwoFa = /two-factor-challenge/i.test(page.url()) ||
+      /two-factor-challenge/i.test(postHtml) ||
+      /Two[\s-]?Factor Authentication/i.test(postHtml) ||
+      (/name=["']code["']/i.test(postHtml) && /recovery_code/i.test(postHtml));
+    if (onTwoFa) {
+      const code = generateTotp(totpSecret);
+      if (code) {
+        for (const s of ['input[name="code"]', 'input[name="two_step_code"]', 'input[autocomplete="one-time-code"]', 'input[inputmode="numeric"]', '#code']) {
+          const inp = page.locator(s);
+          if (await inp.count() === 0) continue;
+          const t = inp.first();
+          if (!(await t.isVisible().catch(() => false))) continue;
+          await t.fill(code, { timeout: 5000 }).catch(() => {});
+          break;
+        }
+        const submit2 = page.locator('form button[type="submit"]:visible, button[type="submit"]:visible, input[type="submit"]:visible');
+        if (await submit2.count() > 0) await submit2.first().click({ timeout: 10_000 }).catch(() => {});
+        else await page.keyboard.press('Enter').catch(() => {});
+        await page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
+        await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+        await waitForLiveView(page);
+      }
+    }
+  }
 }
 
 export async function fetchWithBrowser(
