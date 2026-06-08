@@ -1198,6 +1198,12 @@
 <main>
   <section id="dashboard-view" class="tab-view active">
   <div class="settings-layout">
+    <div class="beta-panel" style="padding:10px 12px">
+      <div class="beta-field">
+        <label for="dashboard-tracker-search">Recherche dashboard</label>
+        <input id="dashboard-tracker-search" type="search" placeholder="Filtrer les trackers affiches..." oninput="renderGrid()" />
+      </div>
+    </div>
     <details id="tracker-definitions-panel">
       <summary>Trackers</summary>
       <div style="margin:0 0 10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap">
@@ -1270,6 +1276,15 @@
             </div>
           </section>
         </div>
+        <section class="beta-panel">
+          <h3>Liaisons announce qBittorrent</h3>
+          <p class="beta-note" style="margin-bottom:10px">Lie les domaines d'annonce qBittorrent aux trackers actifs quand les URLs d'announce ne correspondent pas aux URLs des sites.</p>
+          <div id="beta-announce-mappings"></div>
+          <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap">
+            <button class="beta-icon-btn" onclick="addBetaAnnounceMapping()" type="button">Ajouter une liaison</button>
+            <button class="beta-icon-btn primary" onclick="saveBetaSettings()" type="button">Enregistrer</button>
+          </div>
+        </section>
         <div class="beta-grid-2">
           <section class="beta-panel">
             <h3>Alertes par tracker</h3>
@@ -1664,6 +1679,16 @@
     return latestSortedStats;
   }
 
+  function dashboardStats() {
+    const query = (document.getElementById('dashboard-tracker-search')?.value || '').trim().toLowerCase();
+    if (!query) return latestSortedStats;
+    return latestSortedStats.filter(stat => {
+      const tracker = trackerConfig.find(item => item.id === stat.id);
+      const haystack = `${stat.name} ${stat.id} ${stat.status} ${tracker?.baseUrl || stat.trackerUrl || ''}`.toLowerCase();
+      return haystack.includes(query);
+    });
+  }
+
   function renderBetaSummary(stats = latestSortedStats) {
     const summary = document.getElementById('beta-summary');
     if (!summary) return;
@@ -1883,6 +1908,42 @@
     `).join('') || '<p class="beta-note">Ajoute un ou plusieurs clients qBittorrent pour comparer les stats locales aux stats des sites.</p>';
   }
 
+  function renderBetaAnnounceMappings() {
+    const container = document.getElementById('beta-announce-mappings');
+    if (!container) return;
+    const mappings = betaSettings.announceMappings || [];
+    const detectedHosts = Array.from(new Set((betaOverview?.qbitStats || []).map(item => item.trackerHost).filter(Boolean))).sort();
+    const trackerOptions = trackerConfig.map(t => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.name)}</option>`).join('');
+    const detectedRows = detectedHosts.map(host => {
+      const mapped = mappings.find(mapping => trackerHostFromUrl(mapping.announceHost) === trackerHostFromUrl(host));
+      return `
+        <tr>
+          <td>${escapeHtml(host)}</td>
+          <td>${mapped ? escapeHtml(trackerConfig.find(t => t.id === mapped.trackerId)?.name || mapped.trackerId) : '<span class="cell-muted">Non lie</span>'}</td>
+          <td>${mapped ? '' : `<button class="beta-icon-btn" onclick="addBetaAnnounceMapping('${escapeHtml(host)}')" type="button">Lier</button>`}</td>
+        </tr>`;
+    }).join('');
+    const editRows = mappings.map((mapping, idx) => `
+      <div class="beta-form-row" data-beta-mapping="${idx}" style="grid-template-columns:2fr 2fr auto">
+        <div class="beta-field"><label>Host announce</label><input data-field="announceHost" value="${escapeHtml(mapping.announceHost || '')}" placeholder="tracker.example.org"></div>
+        <div class="beta-field"><label>Tracker actif</label><select data-field="trackerId">${trackerOptions}</select></div>
+        <button class="beta-icon-btn" onclick="removeBetaAnnounceMapping(${idx})" type="button">X</button>
+      </div>
+    `).join('');
+    container.innerHTML = `
+      <table class="beta-mini-table" style="margin-bottom:10px">
+        <thead><tr><th>Host detecte</th><th>Tracker lie</th><th></th></tr></thead>
+        <tbody>${detectedRows || '<tr><td colspan="3" class="cell-muted">Aucun host detecte. Lance Sync qBittorrent apres avoir configure un client.</td></tr>'}</tbody>
+      </table>
+      ${editRows || '<p class="beta-note">Aucune liaison manuelle pour le moment.</p>'}
+    `;
+    mappings.forEach((mapping, idx) => {
+      const row = container.querySelector(`[data-beta-mapping="${idx}"]`);
+      const select = row?.querySelector('[data-field="trackerId"]');
+      if (select) select.value = mapping.trackerId || '';
+    });
+  }
+
   function renderBetaNotificationTargets() {
     const container = document.getElementById('beta-notification-targets');
     if (!container) return;
@@ -1934,6 +1995,7 @@
     renderBetaCalendar();
     drawBetaHistoryChart();
     renderBetaQbitClients();
+    renderBetaAnnounceMappings();
     renderBetaNotificationTargets();
     renderBetaAlertRules();
   }
@@ -1947,6 +2009,10 @@
       password: row.querySelector('[data-field="password"]').value,
       enabled: row.querySelector('[data-field="enabled"]').value === 'true',
     })).filter(client => client.baseUrl);
+    const announceMappings = Array.from(document.querySelectorAll('[data-beta-mapping]')).map((row) => ({
+      announceHost: row.querySelector('[data-field="announceHost"]').value.trim(),
+      trackerId: row.querySelector('[data-field="trackerId"]').value,
+    })).filter(mapping => mapping.announceHost && mapping.trackerId);
     const notificationTargets = Array.from(document.querySelectorAll('[data-beta-target]')).map((row, idx) => ({
       id: betaSettings.notificationTargets?.[idx]?.id || genId(),
       label: row.querySelector('[data-field="label"]').value.trim(),
@@ -1966,6 +2032,7 @@
     return {
       ...betaSettings,
       qbitClients,
+      announceMappings,
       notificationTargets,
       alertRules,
     };
@@ -1981,6 +2048,27 @@
     betaSettings = collectBetaSettingsFromDom();
     betaSettings.qbitClients.splice(index, 1);
     renderBetaQbitClients();
+  }
+
+  function addBetaAnnounceMapping(host = '') {
+    betaSettings = collectBetaSettingsFromDom();
+    betaSettings.announceMappings = betaSettings.announceMappings || [];
+    const normalized = trackerHostFromUrl(host);
+    if (normalized && betaSettings.announceMappings.some(mapping => trackerHostFromUrl(mapping.announceHost) === normalized)) {
+      renderBetaAnnounceMappings();
+      return;
+    }
+    betaSettings.announceMappings.push({
+      announceHost: normalized || '',
+      trackerId: selectedBetaTracker()?.id || trackerConfig[0]?.id || '',
+    });
+    renderBetaAnnounceMappings();
+  }
+
+  function removeBetaAnnounceMapping(index) {
+    betaSettings = collectBetaSettingsFromDom();
+    betaSettings.announceMappings.splice(index, 1);
+    renderBetaAnnounceMappings();
   }
 
   function addBetaNotificationTarget(type) {
@@ -2124,7 +2212,7 @@
       ? { id: active.id, start: active.selectionStart, end: active.selectionEnd }
       : null;
 
-    const stats = activeTab === 'beta' ? betaStats() : latestSortedStats;
+    const stats = activeTab === 'beta' ? betaStats() : dashboardStats();
     renderBetaSummary();
     renderBetaControls();
 

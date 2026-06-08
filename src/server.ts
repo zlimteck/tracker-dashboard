@@ -139,8 +139,14 @@ interface BetaAlertRule {
   targetIds: string[];
 }
 
+interface BetaAnnounceMapping {
+  announceHost: string;
+  trackerId: string;
+}
+
 interface BetaSettings {
   qbitClients: BetaQbitClient[];
+  announceMappings: BetaAnnounceMapping[];
   notificationTargets: BetaNotificationTarget[];
   alertRules: BetaAlertRule[];
   defaults: {
@@ -1561,6 +1567,7 @@ function renderPrometheusMetrics(stats: TrackerStats[]): string {
 function defaultBetaSettings(): BetaSettings {
   return {
     qbitClients: [],
+    announceMappings: [],
     notificationTargets: [],
     alertRules: [],
     defaults: {
@@ -1579,6 +1586,7 @@ function loadBetaSettings(): BetaSettings {
     ...settings,
     defaults: { ...defaultBetaSettings().defaults, ...(settings.defaults ?? {}) },
     qbitClients: Array.isArray(settings.qbitClients) ? settings.qbitClients : [],
+    announceMappings: Array.isArray(settings.announceMappings) ? settings.announceMappings : [],
     notificationTargets: Array.isArray(settings.notificationTargets) ? settings.notificationTargets : [],
     alertRules: Array.isArray(settings.alertRules) ? settings.alertRules : [],
   };
@@ -1591,6 +1599,7 @@ function sanitizeBetaSettings(settings: BetaSettings): BetaSettings {
       ...client,
       password: client.password ? '••••••••' : '',
     })),
+    announceMappings: settings.announceMappings,
     notificationTargets: settings.notificationTargets.map(target => ({
       ...target,
       url: target.url ? '••••••••' : '',
@@ -1634,6 +1643,14 @@ function saveBetaSettingsPayload(raw: unknown): BetaSettings {
     };
   }).filter(target => target.url) : current.notificationTargets;
 
+  const announceMappings: BetaAnnounceMapping[] = Array.isArray(body.announceMappings) ? body.announceMappings.map(rawMapping => {
+    const mapping = rawMapping as Partial<BetaAnnounceMapping>;
+    return {
+      announceHost: trackerHost(mapping.announceHost),
+      trackerId: String(mapping.trackerId || '').trim(),
+    };
+  }).filter(mapping => mapping.announceHost && mapping.announceHost !== 'unknown' && mapping.trackerId) : current.announceMappings;
+
   const alertRules = Array.isArray(body.alertRules) ? body.alertRules.map(rawRule => {
     const rule = rawRule as Partial<BetaAlertRule>;
     return {
@@ -1656,7 +1673,7 @@ function saveBetaSettingsPayload(raw: unknown): BetaSettings {
     siteDownEnabled: body.defaults?.siteDownEnabled !== false,
   };
 
-  const next = { qbitClients, notificationTargets, alertRules, defaults };
+  const next = { qbitClients, announceMappings, notificationTargets, alertRules, defaults };
   setJsonSetting(BETA_SETTINGS_KEY, next);
   return next;
 }
@@ -1696,8 +1713,30 @@ async function fetchQbitClient(client: BetaQbitClient): Promise<QbitTrackerAggre
   });
   const torrents = Array.isArray(response.data) ? response.data as Array<Record<string, unknown>> : [];
   const groups = new Map<string, QbitTrackerAggregate>();
+  const headers = jar.length ? { Cookie: jar.join('; ') } : undefined;
   for (const torrent of torrents) {
-    const host = trackerHost(String(torrent.tracker || torrent.magnet_uri || 'unknown'));
+    let announce = String(torrent.tracker || '');
+    if (!announce || trackerHost(announce) === 'unknown') {
+      const hash = String(torrent.hash || '');
+      if (hash) {
+        try {
+          const trackersResponse = await axios.get(`${baseUrl}/api/v2/torrents/trackers`, {
+            timeout: 6000,
+            headers,
+            params: { hash },
+          });
+          const trackers = Array.isArray(trackersResponse.data) ? trackersResponse.data as Array<Record<string, unknown>> : [];
+          const preferred = trackers.find(item => {
+            const url = String(item.url || '');
+            return /^https?:\/\//i.test(url);
+          });
+          announce = String(preferred?.url || trackers[0]?.url || '');
+        } catch {
+          // Best effort: qBittorrent peut refuser le detail trackers selon permissions/version.
+        }
+      }
+    }
+    const host = trackerHost(announce || String(torrent.magnet_uri || 'unknown'));
     const existing = groups.get(host) ?? {
       clientId: client.id,
       clientLabel: client.label,
@@ -1893,6 +1932,9 @@ export async function start(): Promise<void> {
     trackers = normalizeTrackerConfigs();
     const settings = loadBetaSettings();
     const trackerHosts = new Map(trackers.map(tracker => [trackerHost(tracker.baseUrl), tracker.id]));
+    for (const mapping of settings.announceMappings) {
+      trackerHosts.set(trackerHost(mapping.announceHost), mapping.trackerId);
+    }
     const qbitByTracker = betaQbitStats.map(item => ({
       ...item,
       trackerId: trackerHosts.get(item.trackerHost) ?? null,
