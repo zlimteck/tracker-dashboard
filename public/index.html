@@ -897,7 +897,7 @@
       </label>
     </div>
     <p style="font-size:12px; color:var(--muted); margin:8px 0 0; max-width:760px">
-      Pour les trackers qui nécessitent un cookie de session, tente d'abord une simple requête HTTP avec empreinte de vrai navigateur (sans lancer Chromium) : plus rapide et bien plus léger. Si la page nécessite du JavaScript ou que la session n'est plus valide, l'app retombe automatiquement sur le navigateur. Sans effet si le binaire curl-impersonate n'est pas présent dans l'image.
+      Utilise <b>curl-impersonate</b> (empreinte TLS de vrai navigateur) pour franchir le filtrage anti-bot passif sans lancer Chromium : le login HTTP complet pour les trackers en mode HTTP, et une requête directe pour les trackers navigateur disposant d'un cookie. En cas d'échec (page JS, session expirée, binaire absent), l'app retombe automatiquement sur la voie normale — aucune lecture cassée.
     </p>
 
     <!-- ── Overrides par tracker ────────────────────────────────────────── -->

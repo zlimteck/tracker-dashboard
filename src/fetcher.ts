@@ -15,7 +15,7 @@ import {
 } from './types.js';
 import { getProxyConfig, ensureProxyReady } from './proxy.js';
 import { closeAllSshTunnels } from './sshTunnel.js';
-import { curlImpersonateGet, fastFetchEnabled } from './curlImpersonate.js';
+import { curlImpersonateGet, CurlSession, fastFetchEnabled } from './curlImpersonate.js';
 import { buildCookieHeader } from './browserFetcher.js';
 import { getTrackerTotpSecret } from './db.js';
 import { generateTotp } from './totp.js';
@@ -239,6 +239,20 @@ function isAnubisChallenge(html: string): boolean {
     html.includes("Verification que vous n&#39;etes pas un robot");
 }
 
+// Page anti-bot / challenge JS (Cloudflare & co) : signaux frequents quand l'IP du
+// client est filtree -> la vraie page (avec le token CSRF) n'est jamais servie.
+function isAntiBotPage(html: string): boolean {
+  const h = html.toLowerCase();
+  return h.includes('cf-turnstile') ||
+    h.includes('challenge-platform') ||
+    h.includes('just a moment') ||
+    h.includes('attention required') ||
+    h.includes('cf-chl-') ||
+    h.includes('/cdn-cgi/challenge-platform') ||
+    h.includes('please enable javascript and cookies to continue') ||
+    h.includes('ddos-guard');
+}
+
 // ─── Session cache ────────────────────────────────────────────────────────────
 
 interface Session {
@@ -377,7 +391,16 @@ async function doLogin(
       const match = new RegExp(ext.regex, 's').exec(preRes.data);
       vars[key]   = match?.groups?.['value'] ?? match?.[1] ?? '';
       if (!vars[key]) {
-        throw new Error(`Pre-login : impossible d'extraire "${key}" depuis ${preUrl}`);
+        // La page de pre-login ne contient pas le token attendu. Quasi toujours :
+        // ce n'est PAS la vraie page de login mais une page anti-bot / challenge /
+        // blocage (selon l'IP), ou une page d'erreur. On dump pour diagnostic et on
+        // donne un message actionnable plutot qu'un cryptique "impossible d'extraire".
+        const dumpPath = writeDebugDump(tracker, preUrl, preRes.data, {}, 'prelogin');
+        const suffix = dumpPath ? ` - dump: ${dumpPath}` : '';
+        if (isAnubisChallenge(preRes.data) || isAntiBotPage(preRes.data)) {
+          throw new Error(`Pre-login : page de login non servie (challenge anti-bot / Cloudflare ou IP bloquee) — fournir un cookie de session pour ce tracker${suffix}`);
+        }
+        throw new Error(`Pre-login : token "${key}" introuvable sur ${preUrl} (page de login inattendue : anti-bot, redirection, ou site indisponible)${suffix}`);
       }
     }
   }
@@ -606,6 +629,80 @@ export async function fetchTracker(
     }
   };
 
+  // Login + fetch HTTP via curl-impersonate (empreinte TLS de vrai Chrome) : passe
+  // le filtrage passif Cloudflare/anti-bot que rejette l'empreinte Node d'axios.
+  // Rejoue tout le flux (page CSRF -> POST -> stats) avec un jar de cookies. En cas
+  // d'echec/binaire absent -> null, et la voie axios prouvee prend le relais.
+  const attemptHttpViaCurl = async (): Promise<TrackerStats | null> => {
+    if (!fastFetchEnabled()) return null;
+    if (!(await CurlSession.available())) return null;
+    const cfg = tracker.login;
+    const base = tracker.baseUrl;
+    const cvars: Record<string, string> = { username: creds.username, password: creds.password };
+    const totpSecret = getTrackerTotpSecret(tracker.id);
+    if (totpSecret) {
+      const code = generateTotp(totpSecret);
+      if (code) cvars.otp = code;
+    }
+
+    const sess = new CurlSession(tracker.id);
+    try {
+      let referer = resolveUrl(base, cfg.url);
+      let hiddenInputs: Record<string, string> = {};
+
+      if (cfg.preStep) {
+        const preUrl = resolveUrl(base, cfg.preStep.url);
+        referer = preUrl;
+        const pre = await sess.request(preUrl, { timeoutMs: 30_000 });
+        if (!pre || pre.status >= 400 || !pre.body) return null;
+        if (isAntiBotPage(pre.body)) return null; // bloque meme en Chrome TLS -> laisse axios gerer
+        if (cfg.preStep.includeHiddenInputs) hiddenInputs = extractHiddenInputs(pre.body);
+        for (const [key, ext] of Object.entries(cfg.preStep.extract)) {
+          const m = new RegExp(ext.regex, 's').exec(pre.body);
+          cvars[key] = m?.groups?.['value'] ?? m?.[1] ?? '';
+          if (!cvars[key]) return null; // token introuvable -> repli axios (dump + message clair)
+        }
+      }
+
+      const bodyObj: Record<string, string> = { ...hiddenInputs };
+      for (const [k, v] of Object.entries(cfg.body)) bodyObj[k] = interpolate(v, cvars);
+      if (cvars.otp && cfg.otpField && !(cfg.otpField in bodyObj)) bodyObj[cfg.otpField] = cvars.otp;
+
+      const loginUrl = resolveUrl(base, cfg.url);
+      const isJson = (cfg.contentType ?? 'form') === 'json';
+      const data = isJson ? JSON.stringify(bodyObj) : new URLSearchParams(bodyObj).toString();
+      const postRes = await sess.request(loginUrl, {
+        method: 'POST',
+        data,
+        headers: {
+          'Content-Type': isJson ? 'application/json' : 'application/x-www-form-urlencoded',
+          'Origin': new URL(base).origin,
+          'Referer': referer,
+        },
+        timeoutMs: 30_000,
+      });
+      if (!postRes) return null;
+
+      const url = resolveUrl(base, interpolate(tracker.fetch.url, cvars));
+      const fetchRes = await sess.request(url, { headers: { Referer: loginUrl }, timeoutMs: 30_000 });
+      if (!fetchRes || fetchRes.status >= 400 || !fetchRes.body) return null;
+      if (hasFailurePattern(fetchRes.body, cfg.failurePatterns)) return null; // login KO -> repli axios
+      if (isAnubisChallenge(fetchRes.body)) return null;
+
+      try {
+        const stats = buildStatsFromHtml(url, fetchRes.body);
+        console.log(`  [${tracker.name}] Login+fetch via curl-impersonate OK (axios evite)`);
+        return stats;
+      } catch {
+        return null;
+      }
+    } catch {
+      return null;
+    } finally {
+      sess.dispose();
+    }
+  };
+
   const attempt = async (isRetry = false): Promise<TrackerStats> => {
     if (tracker.fetch.mode === 'browser') {
       if (!isRetry) {
@@ -633,6 +730,13 @@ export async function fetchTracker(
         throw new Error(`Session navigateur non authentifiee - verifier les credentials ou valider le challenge dans le profil navigateur${suffix}`);
       }
       return buildStatsFromHtml(browserResult.url, browserResult.html);
+    }
+
+    // Mode HTTP : on tente d'abord le login+fetch via curl-impersonate (empreinte
+    // navigateur). Si indisponible/echec -> on poursuit sur la voie axios ci-dessous.
+    if (!isRetry) {
+      const viaCurl = await attemptHttpViaCurl();
+      if (viaCurl) return viaCurl;
     }
 
     // Login si nécessaire

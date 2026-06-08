@@ -614,7 +614,7 @@ function normalizeTrackerConfigs(): TrackerConfig[] {
         // CSRF robuste : accepte l'input cache <input name="_token" value="..."> OU
         // le <meta name="csrf-token" content="..."> du <head> (selon le rendu UNIT3D).
         extract: {
-          _csrf: { regex: '(?:name="_token"\\s+value="|name="csrf-token"\\s+content=")(?<value>[^"]+)"' },
+          _csrf: { regex: '(?:name="_token"[^>]*?\\svalue="|name="csrf-token"[^>]*?\\scontent=")(?<value>[^"]+)"' },
         },
       };
       tracker.login.body = {

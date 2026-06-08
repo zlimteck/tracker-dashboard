@@ -139,11 +139,14 @@ Le moteur est embarqué dans l'image Docker. S'il est indisponible (binaire abse
 
 ## Lecture rapide (curl-impersonate)
 
-Lancer un navigateur complet pour chaque lecture est coûteux. Quand c'est possible, le dashboard tente d'abord une simple requête HTTP avec l'empreinte d'un vrai navigateur via **[curl-impersonate](https://github.com/lexiforest/curl-impersonate)** (usurpation de l'empreinte TLS/HTTP2), sans démarrer Chromium.
+Beaucoup de trackers filtrent les requêtes sur l'empreinte TLS : un client Node (axios) est repéré comme « non-navigateur » et se voit servir une page anti-bot (Cloudflare, DDoS-Guard…), même avec de bons identifiants. **[curl-impersonate](https://github.com/lexiforest/curl-impersonate)** usurpe l'empreinte TLS/HTTP2 d'un vrai Chrome et franchit ce filtrage passif, sans navigateur.
 
-Cette voie rapide s'active automatiquement pour un tracker en **mode navigateur** qui dispose d'un **cookie de session** valide et dont la page de stats est rendue côté serveur. Si la page nécessite du JavaScript (SPA), si la session n'est plus valide, ou si le binaire n'est pas présent, l'application retombe **automatiquement** sur le navigateur — aucune lecture n'est cassée.
+Le dashboard l'utilise de deux façons, automatiquement :
 
-Le binaire curl-impersonate est embarqué dans l'image Docker. L'option se règle dans la WebUI (panneau Proxy → **Moteur navigateur** → *Lecture rapide*), activée par défaut.
+- **Trackers en mode HTTP** : le login complet (page CSRF → POST identifiants → lecture des stats) est tenté via curl-impersonate, avec un jar de cookies. En cas d'échec ou si le binaire est absent, l'application retombe sur axios.
+- **Trackers en mode navigateur** disposant d'un **cookie de session** : une simple requête HTTP impersonée est tentée avant de lancer Chromium. Si la page nécessite du JavaScript (SPA) ou que la session n'est plus valide, l'application retombe sur le navigateur.
+
+Dans tous les cas, le repli est **automatique** : aucune lecture n'est cassée. Le binaire est embarqué dans l'image Docker. L'option se règle dans la WebUI (panneau Proxy → **Moteur navigateur** → *Lecture rapide*), activée par défaut.
 
 
 ## Connexions automatiques

@@ -1,4 +1,7 @@
 import { execFile } from 'child_process';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { resolveProxyForTracker, toSshConfig } from './proxy.js';
 import { getSshLocalEndpoint } from './sshTunnel.js';
 import { getJsonSetting } from './db.js';
@@ -62,21 +65,9 @@ export interface CurlGetOptions {
  * GET impersone. Renvoie { status, body } ou null si le binaire est absent /
  * l'appel a echoue (l'appelant retombe alors sur le navigateur).
  */
-export async function curlImpersonateGet(
-  trackerId: string,
-  url: string,
-  opts: CurlGetOptions = {},
-): Promise<{ status: number; body: string } | null> {
-  if (!(await checkAvailable())) return null;
-
-  const timeoutMs = opts.timeoutMs ?? 30_000;
-  const args = ['-sS', '-L', '--max-time', String(Math.ceil(timeoutMs / 1000)), '-w', `${STATUS_MARKER}%{http_code}`];
-  if (opts.userAgent) args.push('-A', opts.userAgent);
-  if (opts.cookie) args.push('-H', `Cookie: ${opts.cookie}`);
-  const proxy = curlProxyArg(trackerId);
-  if (proxy) args.push('--proxy', proxy);
-  args.push(url);
-
+// Execute curl-impersonate avec une liste d'arguments deja construite (sans le
+// marqueur de status ni le binaire). Renvoie { status, body } ou null si echec.
+function execCurl(args: string[], timeoutMs: number): Promise<{ status: number; body: string } | null> {
   return new Promise(resolve => {
     execFile(
       binaryName(),
@@ -93,4 +84,71 @@ export async function curlImpersonateGet(
       },
     );
   });
+}
+
+export async function curlImpersonateGet(
+  trackerId: string,
+  url: string,
+  opts: CurlGetOptions = {},
+): Promise<{ status: number; body: string } | null> {
+  if (!(await checkAvailable())) return null;
+
+  const timeoutMs = opts.timeoutMs ?? 30_000;
+  const args = ['-sS', '-L', '--max-time', String(Math.ceil(timeoutMs / 1000)), '-w', `${STATUS_MARKER}%{http_code}`];
+  if (opts.userAgent) args.push('-A', opts.userAgent);
+  if (opts.cookie) args.push('-H', `Cookie: ${opts.cookie}`);
+  const proxy = curlProxyArg(trackerId);
+  if (proxy) args.push('--proxy', proxy);
+  args.push(url);
+
+  return execCurl(args, timeoutMs);
+}
+
+export interface CurlRequestOptions {
+  method?: 'GET' | 'POST';
+  headers?: Record<string, string>;
+  /** Corps brut (deja encode : form-urlencoded ou JSON selon Content-Type). */
+  data?: string;
+  timeoutMs?: number;
+}
+
+/**
+ * Session curl-impersonate avec jar de cookies persistant entre les requetes
+ * (-c/-b sur un fichier temporaire). Permet de rejouer un login complet
+ * (page CSRF -> POST -> fetch) avec une empreinte TLS de vrai navigateur.
+ * Appeler dispose() en fin de session pour supprimer le jar.
+ */
+export class CurlSession {
+  private readonly trackerId: string;
+  private readonly jarPath: string;
+
+  constructor(trackerId: string) {
+    this.trackerId = trackerId;
+    this.jarPath = path.join(os.tmpdir(), `td-curl-${trackerId}-${process.pid}-${Date.now()}.jar`);
+  }
+
+  static async available(): Promise<boolean> {
+    return checkAvailable();
+  }
+
+  async request(url: string, opts: CurlRequestOptions = {}): Promise<{ status: number; body: string } | null> {
+    if (!(await checkAvailable())) return null;
+    const timeoutMs = opts.timeoutMs ?? 30_000;
+    const args = [
+      '-sS', '-L', '--max-time', String(Math.ceil(timeoutMs / 1000)),
+      '-c', this.jarPath, '-b', this.jarPath,
+      '-w', `${STATUS_MARKER}%{http_code}`,
+    ];
+    if (opts.method === 'POST') args.push('-X', 'POST');
+    for (const [k, v] of Object.entries(opts.headers ?? {})) args.push('-H', `${k}: ${v}`);
+    if (opts.data != null) args.push('--data-raw', opts.data);
+    const proxy = curlProxyArg(this.trackerId);
+    if (proxy) args.push('--proxy', proxy);
+    args.push(url);
+    return execCurl(args, timeoutMs);
+  }
+
+  dispose(): void {
+    try { fs.unlinkSync(this.jarPath); } catch { /* deja absent */ }
+  }
 }
