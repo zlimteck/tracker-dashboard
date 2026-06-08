@@ -1761,7 +1761,7 @@
                       <label>Secret 2FA (TOTP) <span style="color:var(--muted)">— authentification à deux facteurs${credential.hasTotp ? ' · <b style="color:var(--green)">défini</b>' : ''}</span></label>
                       <div class="advanced-cookie-row">
                         <input class="tracker-input" id="credential-totp-${safeId}" type="password" autocomplete="off" spellcheck="false" style="flex:1; font-family:monospace; font-size:12px"
-                          placeholder="${credential.hasTotp ? '•••••••• (enregistré — saisis pour remplacer, vide pour effacer)' : 'Secret base32 (ex: JBSWY3DPEHPK3PXP) fourni à l\\'activation du 2FA'}"
+                          placeholder="${credential.hasTotp ? '•••••••• (enregistré — saisis pour remplacer, vide pour effacer)' : 'Secret base32 (ex: JBSWY3DPEHPK3PXP) fourni à l\'activation du 2FA'}"
                           title="Colle ici le secret 2FA (la clé base32 affichée lors de l'activation du 2FA, à côté du QR code). Le dashboard génère lui-même le code à 6 chiffres à chaque login. Pour l'injection automatique dans le formulaire, le champ du code doit être configuré (otpField) dans la définition du tracker.">
                         <button class="btn-save" style="padding:6px 10px" onclick="saveTrackerTotp('${safeId}', this)">Enregistrer 2FA</button>
                       </div>
