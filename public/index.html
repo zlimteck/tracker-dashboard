@@ -298,11 +298,13 @@
     .beta-field input,
     .beta-field select {
       width: 100%;
+      box-sizing: border-box;
+      height: 32px;
       background: var(--bg);
       border: 1px solid var(--border);
       color: var(--text);
       border-radius: 6px;
-      padding: 7px 9px;
+      padding: 0 9px;
       font-size: 12px;
     }
     .beta-field input:focus,
@@ -311,7 +313,9 @@
       display: grid;
       gap: 6px;
       max-height: 520px;
-      overflow: auto;
+      overflow-y: auto;
+      scrollbar-gutter: stable;
+      padding-right: 14px;
     }
     .beta-tracker-button {
       display: grid;
@@ -474,6 +478,9 @@
       padding: 7px 10px;
       cursor: pointer;
       font-size: 12px;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
     }
     .beta-icon-btn:hover { border-color: var(--blue); color: var(--text); }
     .beta-icon-btn.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
@@ -665,6 +672,7 @@
     .badge-stale { background: color-mix(in srgb, var(--yellow) 16%, transparent); color: var(--yellow); }
     .error-reason { margin: -4px 18px 12px; padding: 6px 10px; font-size: 12px; border-radius: 6px;
       background: color-mix(in srgb, var(--yellow) 10%, transparent); color: var(--yellow); }
+    .beta-panel .error-reason { margin: 0 0 8px; }
     .badge-loading { background: color-mix(in srgb, var(--blue) 14%, transparent); color: var(--blue); }
     .badge-ratioless { background: color-mix(in srgb, var(--purple) 16%, transparent); color: var(--purple); }
     .badge-incident { background: color-mix(in srgb, var(--muted) 18%, transparent); color: var(--muted); }
@@ -1396,6 +1404,7 @@
         </div>
         </section>
         <section class="beta-section" data-beta-section="graphs">
+        <div class="beta-stack">
         <section class="beta-panel">
           <h3>Graphique global</h3>
           <div style="display:flex; gap:8px; align-items:end; flex-wrap:wrap; margin-bottom:10px">
@@ -1417,9 +1426,10 @@
           </div>
           <div id="beta-calendar" class="beta-calendar"></div>
         </section>
+        </div>
         </section>
         <section class="beta-section" data-beta-section="qbit">
-        <div class="beta-grid-2">
+        <div class="beta-stack">
           <section class="beta-panel">
             <h3>Clients BitTorrent</h3>
             <div id="beta-qbit-clients"></div>
@@ -1428,7 +1438,6 @@
               <button class="beta-icon-btn primary" onclick="saveBetaSettings()" type="button">Enregistrer</button>
             </div>
           </section>
-        </div>
         <section class="beta-panel">
           <h3>Liaisons announce BitTorrent</h3>
           <p class="beta-note" style="margin-bottom:10px">Lie les domaines d'annonce des clients BitTorrent aux trackers actifs quand les URLs d'announce ne correspondent pas aux URLs des sites.</p>
@@ -1438,6 +1447,7 @@
             <button class="beta-icon-btn primary" onclick="saveBetaSettings()" type="button">Enregistrer</button>
           </div>
         </section>
+        </div>
         </section>
         <section class="beta-section" data-beta-section="alerts">
         <div class="beta-grid-2">
@@ -2002,7 +2012,7 @@
         </div>
         <div>
           <h3>Notifications configurees</h3>
-          <div style="display:grid; grid-template-columns: 1fr 1fr 1fr auto; gap:8px; align-items:end; margin-bottom:8px">
+          <div style="display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap:8px; align-items:end; margin-bottom:8px">
             <div class="beta-field"><label>Type</label><select id="tracker-alert-kind-${escapeHtml(stat.id)}"><option value="ratio">Ratio</option><option value="buffer">Buffer</option><option value="seedtime">Seedtime</option><option value="cookie">Cookie</option><option value="site">Site HS</option></select></div>
             <div class="beta-field"><label>Condition</label><select id="tracker-alert-op-${escapeHtml(stat.id)}"><option value="<=">&lt;=</option><option value="<">&lt;</option><option value="soon">bientot expire</option><option value="down">HS</option></select></div>
             <div class="beta-field"><label>Seuil</label><input id="tracker-alert-threshold-${escapeHtml(stat.id)}" type="number" step="0.01" value="1"></div>
@@ -2263,14 +2273,14 @@
     if (!container) return;
     const clients = betaSettings.qbitClients || [];
     container.innerHTML = clients.map((client, idx) => `
-      <div class="beta-form-row" data-beta-qbit="${idx}">
+      <div class="beta-form-row" data-beta-qbit="${idx}" style="grid-template-columns: 130px minmax(0,1fr) minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) 80px auto">
         <div class="beta-field"><label>Type</label><select data-field="type"><option value="qbittorrent" ${client.type !== 'rutorrent' ? 'selected' : ''}>qBittorrent</option><option value="rutorrent" ${client.type === 'rutorrent' ? 'selected' : ''}>ruTorrent / rTorrent</option></select></div>
         <div class="beta-field"><label>Nom</label><input data-field="label" value="${escapeHtml(client.label || '')}" placeholder="Seedbox principale"></div>
         <div class="beta-field"><label>URL API</label><input data-field="baseUrl" value="${escapeHtml(client.baseUrl || '')}" placeholder="qBit: https://qb.example · ruTorrent: https://rt.example/RPC2"></div>
         <div class="beta-field"><label>Utilisateur</label><input data-field="username" value="${escapeHtml(client.username || '')}"></div>
         <div class="beta-field"><label>Mot de passe</label><input data-field="password" type="password" value="${escapeHtml(client.password || '')}"></div>
         <div class="beta-field"><label>Actif</label><select data-field="enabled"><option value="true" ${client.enabled !== false ? 'selected' : ''}>Oui</option><option value="false" ${client.enabled === false ? 'selected' : ''}>Non</option></select></div>
-        <div style="display:flex; gap:6px"><button class="beta-icon-btn" onclick="testBetaQbitClient(${idx})" type="button">Tester</button><button class="beta-icon-btn" onclick="removeBetaQbitClient(${idx})" type="button">X</button></div>
+        <div style="display:flex; gap:6px; align-items:flex-end"><button class="beta-icon-btn" onclick="testBetaQbitClient(${idx})" type="button">Tester</button><button class="beta-icon-btn" onclick="removeBetaQbitClient(${idx})" type="button">X</button></div>
       </div>
     `).join('') || '<p class="beta-note">Ajoute un ou plusieurs clients qBittorrent ou ruTorrent/rTorrent pour comparer les stats locales aux stats des sites.</p>';
   }
