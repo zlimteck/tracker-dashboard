@@ -1,0 +1,45 @@
+{
+  "id": "brokenstones",
+  "name": "BrokenStones",
+  "baseUrl": "https://brokenstones.is",
+  "enabled": false,
+  "login": {
+    "url": "login.php",
+    "method": "POST",
+    "contentType": "form",
+    "body": {
+      "username": "{{username}}",
+      "password": "{{password}}",
+      "keeplogged": "1"
+    },
+    "failurePatterns": [
+      "login.php",
+      "type=\"password\"",
+      "Please login"
+    ]
+  },
+  "fetch": {
+    "url": "index.php",
+    "mode": "http",
+    "responseType": "html",
+    "fields": {
+      "uploadedBytes": {
+        "regex": "stats_seeding[\\s\\S]{0,200}?<span[^>]*>\\s*(?<value>[\\d.]+ (?:TB|GB|MB|KB))\\s*</span>",
+        "transform": "bytes"
+      },
+      "downloadedBytes": {
+        "regex": "stats_leeching[\\s\\S]{0,200}?<span[^>]*>\\s*(?<value>[\\d.]+ (?:TB|GB|MB|KB))\\s*</span>",
+        "transform": "bytes"
+      },
+      "ratio": {
+        "regex": "stats_ratio[\\s\\S]{0,200}?<span[^>]*>\\s*(?<value>[\\d.]+)\\s*</span>",
+        "transform": "number"
+      },
+      "tokens": {
+        "regex": "fl_tokens[\\s\\S]{0,200}?<a[^>]*>\\s*(?<value>\\d+)\\s*</a>",
+        "transform": "integer"
+      }
+    }
+  },
+  "dashboard": { "byteUnit": "decimal" }
+}
