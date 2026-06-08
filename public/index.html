@@ -372,6 +372,41 @@
       background: color-mix(in srgb, var(--bg) 72%, transparent);
       border: 1px solid var(--border);
       border-radius: 8px;
+      padding: 10px;
+      overflow: hidden;
+    }
+    .beta-chart-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: flex-start;
+      margin-bottom: 6px;
+    }
+    .beta-chart-title { font-size: 13px; font-weight: 700; }
+    .beta-chart-legend { display: flex; gap: 8px; flex-wrap: wrap; color: var(--muted); font-size: 11px; }
+    .beta-chart-legend span { display: inline-flex; align-items: center; gap: 4px; }
+    .beta-chart-legend i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+    .beta-chart svg { width: 100%; height: 170px; display: block; }
+    .beta-chart-kpis {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .beta-chart-kpis div {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 7px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .beta-chart-kpis strong { display: block; color: var(--text); font-size: 13px; margin-top: 2px; }
+    .beta-match-card {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 9px;
+      background: color-mix(in srgb, var(--bg) 65%, transparent);
+      margin-bottom: 8px;
     }
     .beta-calendar-head {
       display: flex;
@@ -1365,11 +1400,11 @@
             <div class="beta-field" style="max-width:180px"><label for="beta-global-period">Période</label><select id="beta-global-period" onchange="drawBetaGlobalChart()"><option value="day">Jour</option><option value="week">Semaine</option><option value="month">Mois</option></select></div>
             <div class="beta-note">Totaux des trackers actifs : UP, DL et seedtime agrégés par période.</div>
           </div>
-          <canvas id="beta-global-chart" class="beta-chart" width="1200" height="260"></canvas>
+          <div id="beta-global-chart" class="beta-chart"></div>
         </section>
         <section class="beta-panel">
           <h3>Evolution globale et tracker selectionne</h3>
-          <canvas id="beta-history-chart" class="beta-chart" width="1200" height="260"></canvas>
+          <div id="beta-history-chart" class="beta-chart"></div>
         </section>
         <section class="beta-panel">
           <h3>Calendrier des refreshs</h3>
@@ -1930,7 +1965,9 @@
     const trackerUrl = stat.trackerUrl || configured?.baseUrl || '';
     const host = trackerHostFromUrl(trackerUrl);
     const qbits = (betaOverview?.qbitStats || []).filter(item => item.trackerId === stat.id || item.trackerHost === host);
+    const suggestedQbits = (betaOverview?.qbitStats || []).filter(item => !item.trackerId && betaTrackerMatchForHost(item.trackerHost)?.tracker.id === stat.id);
     const torrents = qbits.flatMap(item => (item.torrents || []).map(torrent => ({ ...torrent, clientLabel: item.clientLabel, clientBaseUrl: item.clientBaseUrl })));
+    const suggestedTorrents = suggestedQbits.flatMap(item => (item.torrents || []).map(torrent => ({ ...torrent, trackerHost: item.trackerHost, clientLabel: item.clientLabel })));
     const ratio = computedRatio(stat.fields);
     const buffer = formatBuffer(stat.fields, statByteUnit(stat));
     const history = historyForSelectedTracker();
@@ -1963,6 +2000,12 @@
         </div>
         <div>
           <h3>Notifications configurees</h3>
+          <div style="display:grid; grid-template-columns: 1fr 1fr 1fr auto; gap:8px; align-items:end; margin-bottom:8px">
+            <div class="beta-field"><label>Type</label><select id="tracker-alert-kind-${escapeHtml(stat.id)}"><option value="ratio">Ratio</option><option value="buffer">Buffer</option><option value="seedtime">Seedtime</option><option value="cookie">Cookie</option><option value="site">Site HS</option></select></div>
+            <div class="beta-field"><label>Condition</label><select id="tracker-alert-op-${escapeHtml(stat.id)}"><option value="<=">&lt;=</option><option value="<">&lt;</option><option value="soon">bientot expire</option><option value="down">HS</option></select></div>
+            <div class="beta-field"><label>Seuil</label><input id="tracker-alert-threshold-${escapeHtml(stat.id)}" type="number" step="0.01" value="1"></div>
+            <button class="beta-icon-btn" onclick="addBetaAlertRuleForTracker('${escapeHtml(stat.id)}')" type="button">Ajouter</button>
+          </div>
           <table class="beta-mini-table">
             <thead><tr><th>Alerte</th><th>Condition</th><th>Destinations</th></tr></thead>
             <tbody>${rules.map(rule => {
@@ -1989,7 +2032,20 @@
             </tr>
           `).join('') || '<tr><td colspan="8" class="cell-muted">Aucun torrent lie. Verifie les liaisons announce BitTorrent.</td></tr>'}</tbody>
         </table>
-      </div>`;
+      </div>
+      ${suggestedTorrents.length ? `
+        <div style="margin-top:12px">
+          <h3>Torrents detectes a importer</h3>
+          <p class="beta-note" style="margin-bottom:8px">Ces torrents viennent d'announce hosts non lies, mais ils ressemblent a ce tracker.</p>
+          ${suggestedQbits.map(item => `
+            <div class="beta-match-card">
+              <div class="beta-card-row">
+                <div><strong>${escapeHtml(item.trackerHost)}</strong><span>${item.torrentCount} torrent(s) detecte(s) dans ${escapeHtml(item.clientLabel)}</span></div>
+                <button class="beta-icon-btn" onclick="addBetaAnnounceMapping('${escapeHtml(item.trackerHost)}', '${escapeHtml(stat.id)}')" type="button">Importer / lier</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>` : ''}`;
   }
 
   async function testTrackerProxy(trackerId) {
@@ -2065,56 +2121,53 @@
   }
 
   function drawSeriesChart(canvasId, rows, seriesDefs, title) {
-    const canvas = document.getElementById(canvasId);
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const w = canvas.width;
-    const h = canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--surface').trim() || '#1a1d27';
-    ctx.fillRect(0, 0, w, h);
+    const container = document.getElementById(canvasId);
+    if (!container) return;
     if (rows.length < 2) {
-      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#6b7280';
-      ctx.font = '13px Segoe UI, sans-serif';
-      ctx.fillText('Pas encore assez de donnees pour tracer ce graphique.', 18, 30);
+      container.innerHTML = `<div class="beta-chart-header"><div class="beta-chart-title">${escapeHtml(title)}</div></div><p class="beta-note">Pas encore assez de donnees pour tracer ce graphique.</p>`;
       return;
     }
     const values = rows.flatMap(row => seriesDefs.map(def => Number(def.value(row))).filter(Number.isFinite));
     const max = Math.max(...values, 1);
-    const pad = 34;
-    ctx.strokeStyle = 'rgba(107,114,128,.35)';
-    ctx.lineWidth = 1;
-    for (let i = 0; i < 4; i++) {
+    const w = 1000, h = 170, pad = 22;
+    const grid = [0, 1, 2, 3].map(i => {
       const y = pad + ((h - pad * 2) / 3) * i;
-      ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(w - pad, y); ctx.stroke();
-    }
-    seriesDefs.forEach(def => {
-      ctx.strokeStyle = def.color;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      rows.forEach((row, idx) => {
+      return `<line x1="${pad}" y1="${y}" x2="${w - pad}" y2="${y}" stroke="rgba(107,114,128,.25)" stroke-width="1"/>`;
+    }).join('');
+    const paths = seriesDefs.map(def => {
+      const points = rows.map((row, idx) => {
         const x = pad + ((w - pad * 2) * idx / (rows.length - 1));
         const raw = Number(def.value(row));
         const y = h - pad - ((Number.isFinite(raw) ? raw : 0) / max) * (h - pad * 2);
-        if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        return [x, y];
       });
-      ctx.stroke();
-    });
-    ctx.fillStyle = '#e2e4ed';
-    ctx.font = '12px Segoe UI, sans-serif';
-    ctx.fillText(title, pad, 20);
-    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#6b7280';
-    ctx.fillText(rows[0].label || '', pad, h - 8);
-    ctx.fillText(rows[rows.length - 1].label || '', w - pad - 80, h - 8);
+      const d = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+      const last = points[points.length - 1];
+      return `<path d="${d}" fill="none" stroke="${def.color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><circle cx="${last[0]}" cy="${last[1]}" r="4" fill="${def.color}"/>`;
+    }).join('');
+    const legend = seriesDefs.map(def => `<span><i style="background:${def.color}"></i>${escapeHtml(def.label)}</span>`).join('');
+    const latest = rows[rows.length - 1];
+    const kpis = seriesDefs.map(def => {
+      const value = Number(def.value(latest));
+      const display = def.format ? def.format(value) : (Number.isFinite(value) ? value.toFixed(2) : '-');
+      return `<div>${escapeHtml(def.label)}<strong>${display}</strong></div>`;
+    }).join('');
+    container.innerHTML = `
+      <div class="beta-chart-header">
+        <div><div class="beta-chart-title">${escapeHtml(title)}</div><div class="beta-note">${escapeHtml(rows[0].label || '')} -> ${escapeHtml(rows[rows.length - 1].label || '')}</div></div>
+        <div class="beta-chart-legend">${legend}</div>
+      </div>
+      <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">${grid}${paths}</svg>
+      <div class="beta-chart-kpis">${kpis}</div>`;
   }
 
   function drawBetaGlobalChart() {
     const period = document.getElementById('beta-global-period')?.value || 'day';
     const rows = latestSnapshotsByTrackerAndPeriod(period);
     drawSeriesChart('beta-global-chart', rows, [
-      { color: '#22c55e', value: row => row.uploadedBytes },
-      { color: '#3b82f6', value: row => row.downloadedBytes },
-      { color: '#eab308', value: row => row.seedTimeDays },
+      { label: 'UP total', color: '#22c55e', value: row => row.uploadedBytes, format: value => bytesText(value).replace(/<[^>]+>/g, '') },
+      { label: 'DL total', color: '#3b82f6', value: row => row.downloadedBytes, format: value => bytesText(value).replace(/<[^>]+>/g, '') },
+      { label: 'Seedtime', color: '#eab308', value: row => row.seedTimeDays, format: value => `${value.toFixed(1)} j` },
     ], 'Global: UP / DL / seedtime');
   }
 
@@ -2127,9 +2180,9 @@
       downloadedBytes: Number(row.fields?.downloadedBytes || 0),
       ratio: Number(row.fields?.ratio || computedRatio(row.fields || {}) || 0),
     })), [
-      { color: '#22c55e', value: row => row.uploadedBytes },
-      { color: '#3b82f6', value: row => row.downloadedBytes },
-      { color: '#eab308', value: row => row.ratio },
+      { label: 'UP', color: '#22c55e', value: row => row.uploadedBytes, format: value => bytesText(value).replace(/<[^>]+>/g, '') },
+      { label: 'DL', color: '#3b82f6', value: row => row.downloadedBytes, format: value => bytesText(value).replace(/<[^>]+>/g, '') },
+      { label: 'Ratio', color: '#eab308', value: row => row.ratio, format: value => value.toFixed(2) },
     ], `${selected?.name || 'Tracker'}: UP / DL / ratio`);
   }
 
@@ -2180,6 +2233,29 @@
     catch { return String(url || '').replace(/^https?:\/\//, '').split('/')[0].replace(/^www\./, '').toLowerCase(); }
   }
 
+  function betaTokens(value) {
+    return String(value || '').toLowerCase().split(/[^a-z0-9]+/).filter(token => token.length >= 3);
+  }
+
+  function betaTrackerMatchForHost(host) {
+    const announceHost = trackerHostFromUrl(host);
+    const announceTokens = betaTokens(announceHost);
+    let best = null;
+    for (const tracker of trackerConfig) {
+      const baseHost = trackerHostFromUrl(tracker.baseUrl);
+      const trackerTokens = [...new Set([...betaTokens(baseHost), ...betaTokens(tracker.name), ...betaTokens(tracker.id)])];
+      let score = 0;
+      if (announceHost === baseHost) score += 100;
+      if (announceHost.includes(baseHost) || baseHost.includes(announceHost)) score += 45;
+      for (const token of announceTokens) {
+        if (trackerTokens.includes(token)) score += 12;
+        else if (trackerTokens.some(t => t.includes(token) || token.includes(t))) score += 5;
+      }
+      if (!best || score > best.score) best = { tracker, score };
+    }
+    return best && best.score >= 12 ? best : null;
+  }
+
   function renderBetaQbitClients() {
     const container = document.getElementById('beta-qbit-clients');
     if (!container) return;
@@ -2205,11 +2281,15 @@
     const trackerOptions = trackerConfig.map(t => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.name)}</option>`).join('');
     const detectedRows = detectedHosts.map(host => {
       const mapped = mappings.find(mapping => trackerHostFromUrl(mapping.announceHost) === trackerHostFromUrl(host));
+      const match = betaTrackerMatchForHost(host);
+      const groups = (betaOverview?.qbitStats || []).filter(item => item.trackerHost === host);
+      const torrentCount = groups.reduce((sum, item) => sum + item.torrentCount, 0);
       return `
         <tr>
           <td>${escapeHtml(host)}</td>
-          <td>${mapped ? escapeHtml(trackerConfig.find(t => t.id === mapped.trackerId)?.name || mapped.trackerId) : '<span class="cell-muted">Non lie</span>'}</td>
-          <td>${mapped ? '' : `<button class="beta-icon-btn" onclick="addBetaAnnounceMapping('${escapeHtml(host)}')" type="button">Lier</button>`}</td>
+          <td>${torrentCount} torrent(s)</td>
+          <td>${mapped ? escapeHtml(trackerConfig.find(t => t.id === mapped.trackerId)?.name || mapped.trackerId) : (match ? `${escapeHtml(match.tracker.name)} <span class="cell-muted">(${match.score})</span>` : '<span class="cell-muted">Non lie</span>')}</td>
+          <td>${mapped ? '' : `<button class="beta-icon-btn" onclick="addBetaAnnounceMapping('${escapeHtml(host)}', '${escapeHtml(match?.tracker.id || '')}')" type="button">${match ? 'Lier suggestion' : 'Lier'}</button>`}</td>
         </tr>`;
     }).join('');
     const editRows = mappings.map((mapping, idx) => `
@@ -2221,7 +2301,7 @@
     `).join('');
     container.innerHTML = `
       <table class="beta-mini-table" style="margin-bottom:10px">
-        <thead><tr><th>Host detecte</th><th>Tracker lie</th><th></th></tr></thead>
+        <thead><tr><th>Host detecte</th><th>Torrents</th><th>Suggestion / lien</th><th></th></tr></thead>
         <tbody>${detectedRows || '<tr><td colspan="3" class="cell-muted">Aucun host détecté. Lance Sync clients BitTorrent après avoir configuré un client.</td></tr>'}</tbody>
       </table>
       ${editRows || '<p class="beta-note">Aucune liaison manuelle pour le moment.</p>'}
@@ -2342,7 +2422,7 @@
     renderBetaQbitClients();
   }
 
-  function addBetaAnnounceMapping(host = '') {
+  function addBetaAnnounceMapping(host = '', trackerId = '') {
     betaSettings = collectBetaSettingsFromDom();
     betaSettings.announceMappings = betaSettings.announceMappings || [];
     const normalized = trackerHostFromUrl(host);
@@ -2352,7 +2432,7 @@
     }
     betaSettings.announceMappings.push({
       announceHost: normalized || '',
-      trackerId: selectedBetaTracker()?.id || trackerConfig[0]?.id || '',
+      trackerId: trackerId || betaTrackerMatchForHost(normalized)?.tracker.id || selectedBetaTracker()?.id || trackerConfig[0]?.id || '',
     });
     renderBetaAnnounceMappings();
   }
@@ -2387,6 +2467,23 @@
       targetIds: [],
     });
     renderBetaAlertRules();
+  }
+
+  async function addBetaAlertRuleForTracker(trackerId) {
+    betaSettings = collectBetaSettingsFromDom();
+    const activeTargets = (betaSettings.notificationTargets || []).filter(target => target.enabled).map(target => target.id);
+    betaSettings.alertRules.push({
+      id: genId(),
+      trackerId,
+      enabled: true,
+      kind: document.getElementById(`tracker-alert-kind-${trackerId}`)?.value || 'ratio',
+      operator: document.getElementById(`tracker-alert-op-${trackerId}`)?.value || '<=',
+      threshold: Number(document.getElementById(`tracker-alert-threshold-${trackerId}`)?.value || 1),
+      targetIds: activeTargets,
+    });
+    renderBetaTrackerPage();
+    renderBetaAlertRules();
+    await saveBetaSettings();
   }
 
   function removeBetaAlertRule(index) {
