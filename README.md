@@ -25,6 +25,7 @@ Export Prometheus + dashboard Grafana — endpoint `/metrics` (protégé par tok
 
 ## Changements récents
 
+- Ajout BrokenStones (PR, merci Zlimteck)
 - Double authentification 2FA (TOTP) par tracker (merci Autovisit pour l'idée)
 - Proxy SSH (mot de passe ou clé privée), en plus de HTTP/HTTPS/SOCKS
 - Option moteur navigateur furtif CloakBrowser, en alternative à Chromium
