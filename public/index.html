@@ -68,6 +68,32 @@
 
     .header-right { display: flex; align-items: center; gap: 14px; margin-left: auto; }
 
+    .nav-tabs {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: 18px;
+      padding: 3px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--bg) 72%, transparent);
+    }
+    .tab-button {
+      background: transparent;
+      border: 0;
+      color: var(--muted);
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .tab-button:hover { color: var(--text); }
+    .tab-button.active {
+      background: color-mix(in srgb, var(--blue) 18%, transparent);
+      color: var(--blue);
+    }
+
     #last-updated { font-size: 12px; color: var(--muted); }
 
     #refresh-btn {
@@ -93,6 +119,13 @@
       align-content: start;
       flex: 1;
     }
+    .tab-view {
+      display: none;
+      width: 100%;
+      justify-items: center;
+      align-content: start;
+    }
+    .tab-view.active { display: grid; }
     .settings-layout {
       display: grid;
       grid-template-columns: minmax(0, 1fr);
@@ -114,11 +147,246 @@
       gap: 18px;
       width: min(100%, 2010px);
     }
+    #beta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 320px));
+      justify-content: center;
+      align-content: start;
+      align-items: stretch;
+      grid-auto-rows: max-content;
+      gap: 18px;
+      width: min(100%, 2010px);
+    }
     /* En vue lignes, le conteneur passe en bloc pour laisser le tableau prendre toute la largeur */
-    #grid.grid--rows {
+    #grid.grid--rows, #beta-grid.grid--rows {
       display: block;
       width: min(100%, 2010px);
       overflow-x: auto;
+    }
+    .beta-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      width: min(100%, 2010px);
+      margin-bottom: 14px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+      flex-wrap: wrap;
+    }
+    .beta-title {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 220px;
+    }
+    .beta-title strong { font-size: 13px; }
+    .beta-title span { color: var(--muted); font-size: 12px; }
+    .beta-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .beta-actions button {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .beta-actions button:hover { border-color: var(--blue); color: var(--text); }
+    .beta-actions button.active { border-color: var(--blue); color: var(--blue); }
+    .beta-summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+      width: min(100%, 2010px);
+      margin-bottom: 14px;
+    }
+    .beta-summary-item {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+      padding: 10px 12px;
+    }
+    .beta-summary-item span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .4px;
+      margin-bottom: 4px;
+    }
+    .beta-summary-item strong {
+      font-size: 20px;
+      font-variant-numeric: tabular-nums;
+    }
+    #beta-grid.beta-compact .card-footer,
+    #beta-grid.beta-compact .card-schedule { display: none; }
+    #beta-grid.beta-compact .stat { padding: 6px 10px; }
+    .beta-workbench {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      gap: 16px;
+      width: min(100%, 2010px);
+      align-items: start;
+    }
+    .beta-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .beta-panel h3 {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+    .beta-stack { display: grid; gap: 12px; }
+    .beta-grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .beta-grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .beta-field {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+    .beta-field label {
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .beta-field input,
+    .beta-field select {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 7px 9px;
+      font-size: 12px;
+    }
+    .beta-field input:focus,
+    .beta-field select:focus { outline: none; border-color: var(--blue); }
+    .beta-list {
+      display: grid;
+      gap: 6px;
+      max-height: 520px;
+      overflow: auto;
+    }
+    .beta-tracker-button {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 8px;
+      cursor: pointer;
+    }
+    .beta-tracker-button:hover,
+    .beta-tracker-button.active { border-color: var(--blue); }
+    .beta-tracker-button strong { font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .beta-tracker-button span { color: var(--muted); font-size: 11px; }
+    .beta-status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+    .beta-status-dot.ok { background: var(--green); }
+    .beta-status-dot.warn { background: var(--yellow); }
+    .beta-status-dot.bad { background: var(--red); }
+    .beta-status-dot.info { background: var(--blue); }
+    .beta-card-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 0;
+      border-top: 1px solid var(--border);
+    }
+    .beta-card-row:first-child { border-top: 0; padding-top: 0; }
+    .beta-card-row strong { font-size: 13px; }
+    .beta-card-row span { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+    .beta-mini-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .beta-mini-table th,
+    .beta-mini-table td {
+      padding: 7px 6px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      white-space: nowrap;
+    }
+    .beta-mini-table th { color: var(--muted); font-size: 11px; font-weight: 600; }
+    .beta-chart {
+      width: 100%;
+      height: 240px;
+      display: block;
+      background: color-mix(in srgb, var(--bg) 72%, transparent);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .beta-calendar {
+      display: grid;
+      grid-template-columns: repeat(14, 1fr);
+      gap: 3px;
+    }
+    .beta-day {
+      aspect-ratio: 1;
+      border-radius: 4px;
+      background: color-mix(in srgb, var(--muted) 16%, transparent);
+      border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+    }
+    .beta-day.ok { background: color-mix(in srgb, var(--green) 34%, transparent); }
+    .beta-day.warn { background: color-mix(in srgb, var(--yellow) 34%, transparent); }
+    .beta-day.bad { background: color-mix(in srgb, var(--red) 34%, transparent); }
+    .beta-form-row {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
+      gap: 8px;
+      align-items: end;
+      padding: 9px 0;
+      border-top: 1px solid var(--border);
+    }
+    .beta-form-row:first-child { border-top: 0; padding-top: 0; }
+    .beta-icon-btn {
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      border-radius: 8px;
+      padding: 7px 10px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .beta-icon-btn:hover { border-color: var(--blue); color: var(--text); }
+    .beta-icon-btn.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+    .beta-note { color: var(--muted); font-size: 12px; line-height: 1.45; }
+    @media (max-width: 980px) {
+      .beta-workbench,
+      .beta-grid-2,
+      .beta-grid-3 { grid-template-columns: 1fr; }
+      .beta-form-row { grid-template-columns: 1fr; }
     }
 
     /* ── Vue Lignes (tableau) ──────────────────────────────────────── */
@@ -791,6 +1059,10 @@
 
 <header>
   <img class="header-logo" src="/logo.png" alt="Tracker Dashboard" />
+  <nav class="nav-tabs" aria-label="Vues">
+    <button id="dashboard-tab" class="tab-button active" onclick="setActiveTab('dashboard')" type="button">Dashboard</button>
+    <button id="beta-tab" class="tab-button" onclick="setActiveTab('beta')" type="button">Beta</button>
+  </nav>
   <div class="header-right">
 
     <button id="proxy-toggle" onclick="toggleProxyPanel()">
@@ -924,6 +1196,7 @@
 </div>
 
 <main>
+  <section id="dashboard-view" class="tab-view active">
   <div class="settings-layout">
     <details id="tracker-definitions-panel">
       <summary>Trackers</summary>
@@ -943,6 +1216,86 @@
   </div>
   <div id="schedule-panel"></div>
   <div id="grid"></div>
+  </section>
+  <section id="beta-view" class="tab-view">
+    <div id="beta-summary" class="beta-summary"></div>
+    <div class="beta-toolbar">
+      <div class="beta-title">
+        <strong>Beta lab</strong>
+        <span>Comparaison trackers, qBittorrent, historique et alertes experimentales.</span>
+      </div>
+      <div class="beta-actions" aria-label="Controles beta">
+        <button id="beta-filter-all" class="active" onclick="setBetaFilter('all')" type="button">Tous</button>
+        <button id="beta-filter-problems" onclick="setBetaFilter('problems')" type="button">Problemes</button>
+        <button id="beta-filter-healthy" onclick="setBetaFilter('healthy')" type="button">OK</button>
+        <button id="beta-density-toggle" onclick="toggleBetaDensity()" type="button">Compact</button>
+        <button onclick="refreshBetaQbit()" type="button">Sync qBittorrent</button>
+      </div>
+    </div>
+    <div class="beta-workbench">
+      <aside class="beta-panel">
+        <h3>Trackers</h3>
+        <div class="beta-field" style="margin-bottom:10px">
+          <label for="beta-tracker-search">Recherche</label>
+          <input id="beta-tracker-search" type="search" placeholder="Nom, statut, domaine..." oninput="renderBetaTrackerList()" />
+        </div>
+        <div id="beta-tracker-list" class="beta-list"></div>
+      </aside>
+      <div class="beta-stack">
+        <div class="beta-grid-2">
+          <section class="beta-panel">
+            <h3>Comparaison tracker / qBittorrent</h3>
+            <div id="beta-comparison"></div>
+          </section>
+          <section class="beta-panel">
+            <h3>Statut de fonctionnement</h3>
+            <div id="beta-operation-status"></div>
+          </section>
+        </div>
+        <section class="beta-panel">
+          <h3>Evolution globale et tracker selectionne</h3>
+          <canvas id="beta-history-chart" class="beta-chart" width="1200" height="260"></canvas>
+        </section>
+        <div class="beta-grid-2">
+          <section class="beta-panel">
+            <h3>Calendrier des refreshs</h3>
+            <div id="beta-calendar" class="beta-calendar"></div>
+          </section>
+          <section class="beta-panel">
+            <h3>Clients qBittorrent</h3>
+            <div id="beta-qbit-clients"></div>
+            <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap">
+              <button class="beta-icon-btn" onclick="addBetaQbitClient()" type="button">Ajouter</button>
+              <button class="beta-icon-btn primary" onclick="saveBetaSettings()" type="button">Enregistrer</button>
+            </div>
+          </section>
+        </div>
+        <div class="beta-grid-2">
+          <section class="beta-panel">
+            <h3>Alertes par tracker</h3>
+            <div id="beta-alert-rules"></div>
+            <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap">
+              <button class="beta-icon-btn" onclick="addBetaAlertRule()" type="button">Ajouter une alerte</button>
+              <button class="beta-icon-btn primary" onclick="saveBetaSettings()" type="button">Enregistrer</button>
+            </div>
+          </section>
+          <section class="beta-panel">
+            <h3>Notifications Discord / Apprise</h3>
+            <div id="beta-notification-targets"></div>
+            <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap">
+              <button class="beta-icon-btn" onclick="addBetaNotificationTarget('discord')" type="button">Ajouter Discord</button>
+              <button class="beta-icon-btn" onclick="addBetaNotificationTarget('apprise')" type="button">Ajouter Apprise</button>
+              <button class="beta-icon-btn primary" onclick="saveBetaSettings()" type="button">Enregistrer</button>
+            </div>
+          </section>
+        </div>
+        <section class="beta-panel">
+          <h3>Vue classique Beta</h3>
+          <div id="beta-grid"></div>
+        </section>
+      </div>
+    </div>
+  </section>
 </main>
 
 <footer class="site-footer">
@@ -1289,11 +1642,480 @@
   let latestSortedStats = [];
   const expandedIncidents = new Set();
   let viewMode = 'cards'; // 'cards' | 'rows'
+  let activeTab = 'dashboard'; // 'dashboard' | 'beta'
+  let betaStatusFilter = 'all'; // 'all' | 'problems' | 'healthy'
+  let betaDensity = 'cozy'; // 'cozy' | 'compact'
+  let betaOverview = null;
+  let betaSettings = { qbitClients: [], notificationTargets: [], alertRules: [], defaults: {} };
+  let betaHistory = [];
+  let betaSelectedTrackerId = null;
+
+  function getActiveGrid() {
+    return document.getElementById(activeTab === 'beta' ? 'beta-grid' : 'grid');
+  }
+
+  function hasTrackerProblem(stat) {
+    return stat.status === 'error' || Boolean(stat.stale);
+  }
+
+  function betaStats() {
+    if (betaStatusFilter === 'problems') return latestSortedStats.filter(hasTrackerProblem);
+    if (betaStatusFilter === 'healthy') return latestSortedStats.filter(stat => !hasTrackerProblem(stat));
+    return latestSortedStats;
+  }
+
+  function renderBetaSummary(stats = latestSortedStats) {
+    const summary = document.getElementById('beta-summary');
+    if (!summary) return;
+    const total = stats.length;
+    const errors = stats.filter(stat => stat.status === 'error').length;
+    const stale = stats.filter(stat => stat.stale).length;
+    const healthy = stats.filter(stat => !hasTrackerProblem(stat)).length;
+    summary.innerHTML = `
+      <div class="beta-summary-item"><span>Total</span><strong>${total}</strong></div>
+      <div class="beta-summary-item"><span>OK</span><strong class="col-good">${healthy}</strong></div>
+      <div class="beta-summary-item"><span>Erreurs</span><strong class="col-bad">${errors}</strong></div>
+      <div class="beta-summary-item"><span>Donnees anciennes</span><strong class="col-warn">${stale}</strong></div>
+    `;
+  }
+
+  async function loadBetaData() {
+    if (activeTab !== 'beta') return;
+    try {
+      const [overviewResponse, historyResponse] = await Promise.all([
+        fetch('/api/beta/overview'),
+        fetch('/api/beta/history?limit=800'),
+      ]);
+      const overview = await overviewResponse.json();
+      const history = await historyResponse.json();
+      if (overview.ok) {
+        betaOverview = overview;
+        betaSettings = overview.settings || betaSettings;
+      }
+      if (history.ok) betaHistory = history.snapshots || [];
+      renderBetaLab();
+    } catch (e) {
+      console.warn('Beta unavailable', e);
+    }
+  }
+
+  function selectedBetaTracker() {
+    return latestSortedStats.find(stat => stat.id === betaSelectedTrackerId) || latestSortedStats[0] || null;
+  }
+
+  function trackerModeLabel(status) {
+    if (!status) return 'inconnu';
+    return status.mode || (status.status === 'ok' ? 'fonctionne' : 'cassé');
+  }
+
+  function renderBetaTrackerList() {
+    const list = document.getElementById('beta-tracker-list');
+    if (!list) return;
+    const query = (document.getElementById('beta-tracker-search')?.value || '').toLowerCase();
+    const statuses = new Map((betaOverview?.trackerStatuses || []).map(item => [item.id, item]));
+    const filtered = latestSortedStats.filter(stat => {
+      const status = statuses.get(stat.id);
+      const haystack = `${stat.name} ${stat.id} ${trackerModeLabel(status)} ${stat.trackerUrl || ''}`.toLowerCase();
+      return !query || haystack.includes(query);
+    });
+    if (!betaSelectedTrackerId && filtered[0]) betaSelectedTrackerId = filtered[0].id;
+    list.innerHTML = filtered.map(stat => {
+      const status = statuses.get(stat.id);
+      const mode = trackerModeLabel(status);
+      const dot = mode === 'fonctionne' ? 'ok' : (mode === 'cookie-only' || mode === 'captcha' ? 'warn' : 'bad');
+      return `
+        <button class="beta-tracker-button ${stat.id === betaSelectedTrackerId ? 'active' : ''}" onclick="selectBetaTracker('${escapeHtml(stat.id)}')" type="button">
+          <span>
+            <strong>${escapeHtml(stat.name)}</strong>
+            <span>${escapeHtml(mode)}${status?.ratioless ? ' · ratioless' : ''}</span>
+          </span>
+          <i class="beta-status-dot ${dot}"></i>
+        </button>`;
+    }).join('') || '<p class="beta-note">Aucun tracker.</p>';
+  }
+
+  function selectBetaTracker(trackerId) {
+    betaSelectedTrackerId = trackerId;
+    renderBetaLab();
+  }
+
+  function renderBetaComparison() {
+    const container = document.getElementById('beta-comparison');
+    if (!container) return;
+    const stat = selectedBetaTracker();
+    if (!stat) {
+      container.innerHTML = '<p class="beta-note">Aucun tracker selectionne.</p>';
+      return;
+    }
+    const host = trackerHostFromUrl(stat.trackerUrl || trackerConfig.find(t => t.id === stat.id)?.baseUrl || '');
+    const qbits = (betaOverview?.qbitStats || []).filter(item => item.trackerId === stat.id || item.trackerHost === host);
+    const siteRatio = computedRatio(stat.fields);
+    const siteBuffer = formatBuffer(stat.fields, statByteUnit(stat));
+    container.innerHTML = `
+      <div class="beta-card-row"><div><strong>Site</strong><span>${escapeHtml(stat.name)}</span></div><span>${escapeHtml(stat.status)}</span></div>
+      <div class="beta-card-row"><div><strong>Ratio site</strong><span>Buffer ${Array.isArray(siteBuffer) ? siteBuffer.join(' ') : siteBuffer}</span></div><span>${hasStatValue(siteRatio) ? formatRatio(siteRatio) : '-'}</span></div>
+      <table class="beta-mini-table">
+        <thead><tr><th>Client</th><th>Torrents</th><th>Seed</th><th>UP</th><th>DL</th><th>Ratio</th></tr></thead>
+        <tbody>
+          ${qbits.map(item => `
+            <tr>
+              <td>${escapeHtml(item.clientLabel)}</td>
+              <td>${item.torrentCount}</td>
+              <td>${item.seedingCount}</td>
+              <td>${bytesText(item.uploadedBytes)}</td>
+              <td>${bytesText(item.downloadedBytes)}</td>
+              <td>${item.ratio === null ? '-' : formatRatio(item.ratio)}</td>
+            </tr>
+          `).join('') || '<tr><td colspan="6" class="cell-muted">Aucune donnee qBittorrent liee a ce tracker.</td></tr>'}
+        </tbody>
+      </table>`;
+  }
+
+  function renderBetaOperationStatus() {
+    const container = document.getElementById('beta-operation-status');
+    if (!container) return;
+    const statuses = betaOverview?.trackerStatuses || [];
+    const counts = statuses.reduce((acc, item) => {
+      acc[trackerModeLabel(item)] = (acc[trackerModeLabel(item)] || 0) + 1;
+      return acc;
+    }, {});
+    container.innerHTML = `
+      ${['fonctionne', 'cassé', 'captcha', 'cookie-only'].map(mode => `
+        <div class="beta-card-row">
+          <div><strong>${escapeHtml(mode)}</strong><span>Etat detecte cote Beta</span></div>
+          <span>${counts[mode] || 0}</span>
+        </div>
+      `).join('')}
+      <p class="beta-note" style="margin-top:8px">La classification se base sur les erreurs connues, la reachability, les cookies colles et le mode cookieOnly des definitions.</p>`;
+  }
+
+  function historyForSelectedTracker() {
+    const selected = selectedBetaTracker();
+    if (!selected) return betaHistory;
+    return betaHistory.filter(row => row.trackerId === selected.id);
+  }
+
+  function drawBetaHistoryChart() {
+    const canvas = document.getElementById('beta-history-chart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--surface').trim() || '#1a1d27';
+    ctx.fillRect(0, 0, w, h);
+    const rows = historyForSelectedTracker().slice(-80);
+    if (rows.length < 2) {
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#6b7280';
+      ctx.fillText('Pas encore assez de snapshots pour tracer une evolution.', 18, 28);
+      return;
+    }
+    const seriesDefs = [
+      { key: 'uploadedBytes', color: '#22c55e', label: 'UP' },
+      { key: 'downloadedBytes', color: '#3b82f6', label: 'DL' },
+      { key: 'ratio', color: '#eab308', label: 'Ratio' },
+    ];
+    const values = rows.flatMap(row => seriesDefs.map(def => Number(row.fields?.[def.key] ?? 0)).filter(Number.isFinite));
+    const max = Math.max(...values, 1);
+    const pad = 30;
+    ctx.strokeStyle = 'rgba(107,114,128,.35)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 4; i++) {
+      const y = pad + ((h - pad * 2) / 3) * i;
+      ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(w - pad, y); ctx.stroke();
+    }
+    seriesDefs.forEach(def => {
+      ctx.strokeStyle = def.color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      rows.forEach((row, idx) => {
+        const x = pad + ((w - pad * 2) * idx / (rows.length - 1));
+        const raw = Number(row.fields?.[def.key] ?? 0);
+        const y = h - pad - ((Number.isFinite(raw) ? raw : 0) / max) * (h - pad * 2);
+        if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    });
+    ctx.fillStyle = '#e2e4ed';
+    ctx.font = '12px Segoe UI, sans-serif';
+    ctx.fillText(seriesDefs.map(def => def.label).join(' / '), pad, 18);
+  }
+
+  function renderBetaCalendar() {
+    const container = document.getElementById('beta-calendar');
+    if (!container) return;
+    const rows = historyForSelectedTracker();
+    const byDay = new Map();
+    rows.forEach(row => {
+      const day = String(row.capturedAt || '').slice(0, 10);
+      byDay.set(day, row.status === 'ok' ? 'ok' : 'bad');
+    });
+    const today = new Date();
+    const days = [];
+    for (let i = 55; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      const cls = byDay.get(key) || '';
+      days.push(`<div class="beta-day ${cls}" title="${key}${cls ? ` · ${cls}` : ''}"></div>`);
+    }
+    container.innerHTML = days.join('');
+  }
+
+  function trackerHostFromUrl(url) {
+    try { return new URL(url).hostname.replace(/^www\./, '').toLowerCase(); }
+    catch { return String(url || '').replace(/^https?:\/\//, '').split('/')[0].replace(/^www\./, '').toLowerCase(); }
+  }
+
+  function renderBetaQbitClients() {
+    const container = document.getElementById('beta-qbit-clients');
+    if (!container) return;
+    const clients = betaSettings.qbitClients || [];
+    container.innerHTML = clients.map((client, idx) => `
+      <div class="beta-form-row" data-beta-qbit="${idx}">
+        <div class="beta-field"><label>Nom</label><input data-field="label" value="${escapeHtml(client.label || '')}" placeholder="Seedbox principale"></div>
+        <div class="beta-field"><label>URL WebUI</label><input data-field="baseUrl" value="${escapeHtml(client.baseUrl || '')}" placeholder="https://qb.example"></div>
+        <div class="beta-field"><label>Utilisateur</label><input data-field="username" value="${escapeHtml(client.username || '')}"></div>
+        <div class="beta-field"><label>Mot de passe</label><input data-field="password" type="password" value="${escapeHtml(client.password || '')}"></div>
+        <div class="beta-field"><label>Actif</label><select data-field="enabled"><option value="true" ${client.enabled !== false ? 'selected' : ''}>Oui</option><option value="false" ${client.enabled === false ? 'selected' : ''}>Non</option></select></div>
+        <div style="display:flex; gap:6px"><button class="beta-icon-btn" onclick="testBetaQbitClient(${idx})" type="button">Tester</button><button class="beta-icon-btn" onclick="removeBetaQbitClient(${idx})" type="button">X</button></div>
+      </div>
+    `).join('') || '<p class="beta-note">Ajoute un ou plusieurs clients qBittorrent pour comparer les stats locales aux stats des sites.</p>';
+  }
+
+  function renderBetaNotificationTargets() {
+    const container = document.getElementById('beta-notification-targets');
+    if (!container) return;
+    const targets = betaSettings.notificationTargets || [];
+    container.innerHTML = targets.map((target, idx) => `
+      <div class="beta-form-row" data-beta-target="${idx}">
+        <div class="beta-field"><label>Nom</label><input data-field="label" value="${escapeHtml(target.label || '')}"></div>
+        <div class="beta-field"><label>Type</label><select data-field="type"><option value="discord" ${target.type !== 'apprise' ? 'selected' : ''}>Discord</option><option value="apprise" ${target.type === 'apprise' ? 'selected' : ''}>Apprise</option></select></div>
+        <div class="beta-field" style="grid-column:span 2"><label>Webhook / endpoint</label><input data-field="url" value="${escapeHtml(target.url || '')}" placeholder="https://..."></div>
+        <div class="beta-field"><label>Actif</label><select data-field="enabled"><option value="true" ${target.enabled !== false ? 'selected' : ''}>Oui</option><option value="false" ${target.enabled === false ? 'selected' : ''}>Non</option></select></div>
+        <div style="display:flex; gap:6px"><button class="beta-icon-btn" onclick="testBetaNotification('${escapeHtml(target.id)}')" type="button">Tester</button><button class="beta-icon-btn" onclick="removeBetaNotificationTarget(${idx})" type="button">X</button></div>
+      </div>
+    `).join('') || '<p class="beta-note">Ajoute Discord et/ou Apprise. Les URLs sont masquees au rechargement.</p>';
+  }
+
+  function renderBetaAlertRules() {
+    const container = document.getElementById('beta-alert-rules');
+    if (!container) return;
+    const rules = betaSettings.alertRules || [];
+    const trackerOptions = trackerConfig.map(t => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.name)}</option>`).join('');
+    container.innerHTML = rules.map((rule, idx) => `
+      <div class="beta-form-row" data-beta-rule="${idx}">
+        <div class="beta-field"><label>Tracker</label><select data-field="trackerId">${trackerOptions}</select></div>
+        <div class="beta-field"><label>Type</label><select data-field="kind">
+          <option value="ratio">Ratio</option><option value="buffer">Buffer</option><option value="seedtime">Seedtime</option><option value="cookie">Cookie</option><option value="site">Site HS</option>
+        </select></div>
+        <div class="beta-field"><label>Condition</label><select data-field="operator">
+          <option value="<=">&lt;=</option><option value="<">&lt;</option><option value=">=">&gt;=</option><option value=">">&gt;</option><option value="soon">bientot expire</option><option value="expired">expire</option><option value="down">HS</option>
+        </select></div>
+        <div class="beta-field"><label>Seuil</label><input data-field="threshold" type="number" step="0.01" value="${escapeHtml(rule.threshold ?? 1)}"></div>
+        <div class="beta-field"><label>Actif</label><select data-field="enabled"><option value="true" ${rule.enabled !== false ? 'selected' : ''}>Oui</option><option value="false" ${rule.enabled === false ? 'selected' : ''}>Non</option></select></div>
+        <button class="beta-icon-btn" onclick="removeBetaAlertRule(${idx})" type="button">X</button>
+      </div>
+    `).join('') || '<p class="beta-note">Alertes globales proposees : ratio <= 1 hors ratioless, cookie bientot expire, site HS. Tu peux ajouter des seuils par tracker ici.</p>';
+    rules.forEach((rule, idx) => {
+      const row = container.querySelector(`[data-beta-rule="${idx}"]`);
+      if (!row) return;
+      ['trackerId', 'kind', 'operator', 'enabled'].forEach(field => {
+        const el = row.querySelector(`[data-field="${field}"]`);
+        if (el) el.value = String(rule[field] ?? '');
+      });
+    });
+  }
+
+  function renderBetaLab() {
+    renderBetaTrackerList();
+    renderBetaComparison();
+    renderBetaOperationStatus();
+    renderBetaCalendar();
+    drawBetaHistoryChart();
+    renderBetaQbitClients();
+    renderBetaNotificationTargets();
+    renderBetaAlertRules();
+  }
+
+  function collectBetaSettingsFromDom() {
+    const qbitClients = Array.from(document.querySelectorAll('[data-beta-qbit]')).map((row, idx) => ({
+      id: betaSettings.qbitClients?.[idx]?.id || genId(),
+      label: row.querySelector('[data-field="label"]').value.trim(),
+      baseUrl: row.querySelector('[data-field="baseUrl"]').value.trim(),
+      username: row.querySelector('[data-field="username"]').value.trim(),
+      password: row.querySelector('[data-field="password"]').value,
+      enabled: row.querySelector('[data-field="enabled"]').value === 'true',
+    })).filter(client => client.baseUrl);
+    const notificationTargets = Array.from(document.querySelectorAll('[data-beta-target]')).map((row, idx) => ({
+      id: betaSettings.notificationTargets?.[idx]?.id || genId(),
+      label: row.querySelector('[data-field="label"]').value.trim(),
+      type: row.querySelector('[data-field="type"]').value,
+      url: row.querySelector('[data-field="url"]').value.trim(),
+      enabled: row.querySelector('[data-field="enabled"]').value === 'true',
+    })).filter(target => target.url);
+    const alertRules = Array.from(document.querySelectorAll('[data-beta-rule]')).map((row, idx) => ({
+      id: betaSettings.alertRules?.[idx]?.id || genId(),
+      trackerId: row.querySelector('[data-field="trackerId"]').value,
+      kind: row.querySelector('[data-field="kind"]').value,
+      operator: row.querySelector('[data-field="operator"]').value,
+      threshold: Number(row.querySelector('[data-field="threshold"]').value),
+      enabled: row.querySelector('[data-field="enabled"]').value === 'true',
+      targetIds: notificationTargets.filter(target => target.enabled).map(target => target.id),
+    })).filter(rule => rule.trackerId);
+    return {
+      ...betaSettings,
+      qbitClients,
+      notificationTargets,
+      alertRules,
+    };
+  }
+
+  function addBetaQbitClient() {
+    betaSettings = collectBetaSettingsFromDom();
+    betaSettings.qbitClients.push({ id: genId(), label: 'qBittorrent', baseUrl: '', username: '', password: '', enabled: true });
+    renderBetaQbitClients();
+  }
+
+  function removeBetaQbitClient(index) {
+    betaSettings = collectBetaSettingsFromDom();
+    betaSettings.qbitClients.splice(index, 1);
+    renderBetaQbitClients();
+  }
+
+  function addBetaNotificationTarget(type) {
+    betaSettings = collectBetaSettingsFromDom();
+    betaSettings.notificationTargets.push({ id: genId(), type, label: type === 'apprise' ? 'Apprise' : 'Discord', url: '', enabled: true });
+    renderBetaNotificationTargets();
+  }
+
+  function removeBetaNotificationTarget(index) {
+    betaSettings = collectBetaSettingsFromDom();
+    betaSettings.notificationTargets.splice(index, 1);
+    renderBetaNotificationTargets();
+  }
+
+  function addBetaAlertRule() {
+    betaSettings = collectBetaSettingsFromDom();
+    betaSettings.alertRules.push({
+      id: genId(),
+      trackerId: selectedBetaTracker()?.id || trackerConfig[0]?.id || '',
+      enabled: true,
+      kind: 'ratio',
+      operator: '<=',
+      threshold: 1,
+      targetIds: [],
+    });
+    renderBetaAlertRules();
+  }
+
+  function removeBetaAlertRule(index) {
+    betaSettings = collectBetaSettingsFromDom();
+    betaSettings.alertRules.splice(index, 1);
+    renderBetaAlertRules();
+  }
+
+  async function saveBetaSettings() {
+    betaSettings = collectBetaSettingsFromDom();
+    const r = await fetch('/api/beta/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(betaSettings),
+    });
+    const data = await r.json();
+    if (data.ok) {
+      betaSettings = data.settings;
+      await loadBetaData();
+    } else {
+      alert(data.error || 'Erreur sauvegarde Beta');
+    }
+  }
+
+  async function testBetaQbitClient(index) {
+    const settings = collectBetaSettingsFromDom();
+    const client = settings.qbitClients[index];
+    if (!client) return;
+    const r = await fetch('/api/beta/qbit/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(client),
+    });
+    const data = await r.json();
+    alert(data.ok ? `qBittorrent OK: ${data.torrentCount} torrents sur ${data.trackerCount} tracker(s)` : `qBittorrent KO: ${data.error}`);
+  }
+
+  async function refreshBetaQbit() {
+    const r = await fetch('/api/beta/qbit/refresh', { method: 'POST' });
+    const data = await r.json();
+    if (!data.ok) {
+      alert(data.error || 'Refresh qBittorrent KO');
+      return;
+    }
+    await loadBetaData();
+  }
+
+  async function testBetaNotification(targetId) {
+    await saveBetaSettings();
+    const r = await fetch('/api/beta/notifications/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetId }),
+    });
+    const data = await r.json();
+    alert(data.ok ? 'Notification envoyee' : `Notification KO: ${data.error}`);
+  }
+
+  function renderBetaControls() {
+    ['all', 'problems', 'healthy'].forEach(filter => {
+      const btn = document.getElementById(`beta-filter-${filter}`);
+      if (btn) btn.classList.toggle('active', betaStatusFilter === filter);
+    });
+    const densityBtn = document.getElementById('beta-density-toggle');
+    if (densityBtn) {
+      densityBtn.classList.toggle('active', betaDensity === 'compact');
+      densityBtn.textContent = betaDensity === 'compact' ? 'Confort' : 'Compact';
+    }
+  }
+
+  function setActiveTab(tab) {
+    activeTab = tab === 'beta' ? 'beta' : 'dashboard';
+    localStorage.setItem('tracker-dashboard-tab', activeTab);
+    document.getElementById('dashboard-view')?.classList.toggle('active', activeTab === 'dashboard');
+    document.getElementById('beta-view')?.classList.toggle('active', activeTab === 'beta');
+    document.getElementById('dashboard-tab')?.classList.toggle('active', activeTab === 'dashboard');
+    document.getElementById('beta-tab')?.classList.toggle('active', activeTab === 'beta');
+    renderGrid();
+    loadBetaData();
+  }
+
+  function loadActiveTab() {
+    setActiveTab(localStorage.getItem('tracker-dashboard-tab') || 'dashboard');
+  }
+
+  function setBetaFilter(filter) {
+    betaStatusFilter = ['problems', 'healthy'].includes(filter) ? filter : 'all';
+    localStorage.setItem('tracker-dashboard-beta-filter', betaStatusFilter);
+    renderBetaControls();
+    renderGrid();
+  }
+
+  function loadBetaSettings() {
+    betaStatusFilter = localStorage.getItem('tracker-dashboard-beta-filter') || 'all';
+    betaDensity = localStorage.getItem('tracker-dashboard-beta-density') || 'cozy';
+    renderBetaControls();
+  }
+
+  function toggleBetaDensity() {
+    betaDensity = betaDensity === 'compact' ? 'cozy' : 'compact';
+    localStorage.setItem('tracker-dashboard-beta-density', betaDensity);
+    renderBetaControls();
+    renderGrid();
+  }
 
   // Re-rend la grille a partir des dernieres stats (sans re-fetch), en preservant
   // la saisie en cours et le focus dans un textarea d'incident.
   function renderGrid() {
-    const grid = document.getElementById('grid');
+    const grid = getActiveGrid();
     if (!grid || latestSortedStats.length === 0) return;
 
     captureIncidentNotes();
@@ -1302,10 +2124,16 @@
       ? { id: active.id, start: active.selectionStart, end: active.selectionEnd }
       : null;
 
+    const stats = activeTab === 'beta' ? betaStats() : latestSortedStats;
+    renderBetaSummary();
+    renderBetaControls();
+
     grid.classList.toggle('grid--rows', viewMode === 'rows');
-    grid.innerHTML = viewMode === 'rows'
-      ? renderRowsView(latestSortedStats)
-      : latestSortedStats.map(renderCard).join('');
+    grid.classList.toggle('beta-compact', activeTab === 'beta' && betaDensity === 'compact');
+    grid.innerHTML = stats.length === 0
+      ? '<div class="error-body">Aucun tracker dans ce filtre.</div>'
+      : (viewMode === 'rows' ? renderRowsView(stats) : stats.map(renderCard).join(''));
+    if (activeTab === 'beta') renderBetaLab();
 
     if (focusSnap) {
       const el = document.getElementById(focusSnap.id);
@@ -1957,7 +2785,7 @@
       trackerCount = d.trackers.filter(t => t.enabled).length;
       renderSchedulePanel(trackerConfig);
       if (!presentationMode && trackerCount === 0) {
-        document.getElementById('grid').innerHTML = '<div class="error-body">Aucun tracker configuré.</div>';
+        getActiveGrid().innerHTML = '<div class="error-body">Aucun tracker configuré.</div>';
       }
     } catch {}
   }
@@ -1967,7 +2795,7 @@
     const data = await r.json();
     clearTimeout(window._refreshPoll);
 
-    const grid = document.getElementById('grid');
+    const grid = getActiveGrid();
     presentationMode = Boolean(data.presentationMode);
     renderPresentationToggle();
 
@@ -1985,6 +2813,7 @@
 
     latestSortedStats = [...data.stats].sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
     renderGrid();
+    await loadBetaData();
     document.getElementById('last-updated').textContent =
       data.lastRefresh ? `Mis à jour ${relativeTime(data.lastRefresh)}` : '—';
 
@@ -2389,15 +3218,17 @@
   async function init() {
     loadTheme();
     loadViewMode();
+    loadBetaSettings();
+    loadActiveTab();
     await loadPresentationMode();
     await loadProxySettings();
     await loadBrowserEngine();
     await loadFastFetch();
     await loadTrackerDefinitionsPanel();
-    document.getElementById('grid').innerHTML = renderSkeleton(trackerCount);
+    getActiveGrid().innerHTML = renderSkeleton(trackerCount);
     await loadConfig();
     await loadProxyOverrides();
-    document.getElementById('grid').innerHTML = renderSkeleton(trackerCount);
+    getActiveGrid().innerHTML = renderSkeleton(trackerCount);
     await loadStats();
     // Polling léger toutes les 60s pour mettre à jour l'heure relative
     setInterval(loadStats, 60_000);

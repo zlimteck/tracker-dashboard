@@ -29,6 +29,7 @@ import {
   importLegacyTrackersIfNeeded,
   getJsonSetting,
   getLatestOkStatSnapshot,
+  listStatSnapshots,
   listTrackerCredentialSummaries,
   listTrackerDefinitionFiles,
   listTrackerSchedules,
@@ -110,6 +111,62 @@ let cachedStats: TrackerStats[] = [];
 let lastRefresh: string | null  = null;
 let isRefreshing                = false;
 const pendingScheduledRuns = new Set<string>();
+
+interface BetaQbitClient {
+  id: string;
+  label: string;
+  baseUrl: string;
+  username?: string;
+  password?: string;
+  enabled: boolean;
+}
+
+interface BetaNotificationTarget {
+  id: string;
+  type: 'discord' | 'apprise';
+  label: string;
+  url: string;
+  enabled: boolean;
+}
+
+interface BetaAlertRule {
+  id: string;
+  trackerId: string;
+  enabled: boolean;
+  kind: 'ratio' | 'buffer' | 'seedtime' | 'cookie' | 'site';
+  operator: '<=' | '<' | '>=' | '>' | 'expired' | 'soon' | 'down';
+  threshold: number;
+  targetIds: string[];
+}
+
+interface BetaSettings {
+  qbitClients: BetaQbitClient[];
+  notificationTargets: BetaNotificationTarget[];
+  alertRules: BetaAlertRule[];
+  defaults: {
+    ratioEnabled: boolean;
+    ratioThreshold: number;
+    cookieDays: number;
+    siteDownEnabled: boolean;
+  };
+}
+
+interface QbitTrackerAggregate {
+  clientId: string;
+  clientLabel: string;
+  trackerHost: string;
+  torrentCount: number;
+  seedingCount: number;
+  leechingCount: number;
+  uploadedBytes: number;
+  downloadedBytes: number;
+  ratio: number | null;
+  totalSizeBytes: number;
+}
+
+const BETA_SETTINGS_KEY = 'beta_settings';
+let betaQbitStats: QbitTrackerAggregate[] = [];
+let betaQbitLastRefresh: string | null = null;
 
 const unit3dFields = knownUnit3dFields();
 const gazelleStatsFields = knownGazelleStatsFields();
@@ -1469,7 +1526,226 @@ function renderPrometheusMetrics(stats: TrackerStats[]): string {
       lines.push(`${def.name}{${labels}} ${printable}`);
     }
   }
+  if (betaQbitStats.length > 0) {
+    const qbitDefinitions: Array<{ name: string; help: string; type: 'gauge' | 'counter'; pick: (s: QbitTrackerAggregate) => number | null }> = [
+      { name: 'tracker_qbit_torrents', help: 'qBittorrent torrents grouped by tracker host', type: 'gauge', pick: s => s.torrentCount },
+      { name: 'tracker_qbit_seeding_torrents', help: 'qBittorrent seeding torrents grouped by tracker host', type: 'gauge', pick: s => s.seedingCount },
+      { name: 'tracker_qbit_leeching_torrents', help: 'qBittorrent leeching torrents grouped by tracker host', type: 'gauge', pick: s => s.leechingCount },
+      { name: 'tracker_qbit_uploaded_bytes_total', help: 'qBittorrent uploaded bytes grouped by tracker host', type: 'counter', pick: s => s.uploadedBytes },
+      { name: 'tracker_qbit_downloaded_bytes_total', help: 'qBittorrent downloaded bytes grouped by tracker host', type: 'counter', pick: s => s.downloadedBytes },
+      { name: 'tracker_qbit_ratio', help: 'qBittorrent ratio grouped by tracker host', type: 'gauge', pick: s => s.ratio },
+      { name: 'tracker_qbit_shared_size_bytes', help: 'qBittorrent total torrent size grouped by tracker host', type: 'gauge', pick: s => s.totalSizeBytes },
+    ];
+    for (const def of qbitDefinitions) {
+      lines.push(`# HELP ${def.name} ${def.help}`);
+      lines.push(`# TYPE ${def.name} ${def.type}`);
+      for (const stat of betaQbitStats) {
+        const value = def.pick(stat);
+        if (value === null) continue;
+        const labels = `client="${escapeLabel(stat.clientId)}",client_name="${escapeLabel(stat.clientLabel)}",tracker_host="${escapeLabel(stat.trackerHost)}"`;
+        lines.push(`${def.name}{${labels}} ${value}`);
+      }
+    }
+    if (betaQbitLastRefresh) {
+      const t = Date.parse(betaQbitLastRefresh);
+      if (Number.isFinite(t)) {
+        lines.push('# HELP tracker_qbit_last_refresh_timestamp_seconds Unix timestamp of last qBittorrent beta refresh');
+        lines.push('# TYPE tracker_qbit_last_refresh_timestamp_seconds gauge');
+        lines.push(`tracker_qbit_last_refresh_timestamp_seconds ${Math.floor(t / 1000)}`);
+      }
+    }
+  }
   return lines.join('\n') + '\n';
+}
+
+function defaultBetaSettings(): BetaSettings {
+  return {
+    qbitClients: [],
+    notificationTargets: [],
+    alertRules: [],
+    defaults: {
+      ratioEnabled: true,
+      ratioThreshold: 1,
+      cookieDays: 7,
+      siteDownEnabled: true,
+    },
+  };
+}
+
+function loadBetaSettings(): BetaSettings {
+  const settings = getJsonSetting(BETA_SETTINGS_KEY, defaultBetaSettings());
+  return {
+    ...defaultBetaSettings(),
+    ...settings,
+    defaults: { ...defaultBetaSettings().defaults, ...(settings.defaults ?? {}) },
+    qbitClients: Array.isArray(settings.qbitClients) ? settings.qbitClients : [],
+    notificationTargets: Array.isArray(settings.notificationTargets) ? settings.notificationTargets : [],
+    alertRules: Array.isArray(settings.alertRules) ? settings.alertRules : [],
+  };
+}
+
+function sanitizeBetaSettings(settings: BetaSettings): BetaSettings {
+  return {
+    ...settings,
+    qbitClients: settings.qbitClients.map(client => ({
+      ...client,
+      password: client.password ? '••••••••' : '',
+    })),
+    notificationTargets: settings.notificationTargets.map(target => ({
+      ...target,
+      url: target.url ? '••••••••' : '',
+    })),
+  };
+}
+
+function saveBetaSettingsPayload(raw: unknown): BetaSettings {
+  const current = loadBetaSettings();
+  const body = (raw && typeof raw === 'object' ? raw : {}) as Partial<BetaSettings>;
+  const previousClients = new Map(current.qbitClients.map(client => [client.id, client]));
+  const previousTargets = new Map(current.notificationTargets.map(target => [target.id, target]));
+
+  const qbitClients = Array.isArray(body.qbitClients) ? body.qbitClients.map(rawClient => {
+    const client = rawClient as Partial<BetaQbitClient>;
+    const id = typeof client.id === 'string' && client.id ? client.id : crypto.randomUUID();
+    const previous = previousClients.get(id);
+    const password = client.password === '••••••••' ? (previous?.password ?? '') : (client.password ?? '');
+    return {
+      id,
+      label: String(client.label || 'qBittorrent').trim().slice(0, 80),
+      baseUrl: String(client.baseUrl || '').trim().replace(/\/+$/, ''),
+      username: String(client.username || '').trim(),
+      password,
+      enabled: client.enabled !== false,
+    };
+  }).filter(client => client.baseUrl) : current.qbitClients;
+
+  const notificationTargets: BetaNotificationTarget[] = Array.isArray(body.notificationTargets) ? body.notificationTargets.map(rawTarget => {
+    const target = rawTarget as Partial<BetaNotificationTarget>;
+    const id = typeof target.id === 'string' && target.id ? target.id : crypto.randomUUID();
+    const previous = previousTargets.get(id);
+    const url = target.url === '••••••••' ? (previous?.url ?? '') : (target.url ?? '');
+    const type: BetaNotificationTarget['type'] = target.type === 'apprise' ? 'apprise' : 'discord';
+    return {
+      id,
+      type,
+      label: String(target.label || (type === 'discord' ? 'Discord' : 'Apprise')).trim().slice(0, 80),
+      url: String(url || '').trim(),
+      enabled: target.enabled !== false,
+    };
+  }).filter(target => target.url) : current.notificationTargets;
+
+  const alertRules = Array.isArray(body.alertRules) ? body.alertRules.map(rawRule => {
+    const rule = rawRule as Partial<BetaAlertRule>;
+    return {
+      id: typeof rule.id === 'string' && rule.id ? rule.id : crypto.randomUUID(),
+      trackerId: String(rule.trackerId || '').trim(),
+      enabled: rule.enabled !== false,
+      kind: ['buffer', 'seedtime', 'cookie', 'site'].includes(String(rule.kind)) ? rule.kind as BetaAlertRule['kind'] : 'ratio',
+      operator: ['<=', '<', '>=', '>', 'expired', 'soon', 'down'].includes(String(rule.operator)) ? rule.operator as BetaAlertRule['operator'] : '<=',
+      threshold: Number.isFinite(Number(rule.threshold)) ? Number(rule.threshold) : 1,
+      targetIds: Array.isArray(rule.targetIds) ? rule.targetIds.filter((id): id is string => typeof id === 'string') : [],
+    };
+  }).filter(rule => rule.trackerId) : current.alertRules;
+
+  const defaults = {
+    ...current.defaults,
+    ...(body.defaults ?? {}),
+    ratioThreshold: Number.isFinite(Number(body.defaults?.ratioThreshold)) ? Number(body.defaults?.ratioThreshold) : current.defaults.ratioThreshold,
+    cookieDays: Number.isFinite(Number(body.defaults?.cookieDays)) ? Number(body.defaults?.cookieDays) : current.defaults.cookieDays,
+    ratioEnabled: body.defaults?.ratioEnabled !== false,
+    siteDownEnabled: body.defaults?.siteDownEnabled !== false,
+  };
+
+  const next = { qbitClients, notificationTargets, alertRules, defaults };
+  setJsonSetting(BETA_SETTINGS_KEY, next);
+  return next;
+}
+
+function trackerHost(value: string | undefined): string {
+  if (!value) return 'unknown';
+  try {
+    return new URL(value).hostname.replace(/^www\./, '').toLowerCase();
+  } catch {
+    return String(value).replace(/^https?:\/\//, '').split('/')[0].replace(/^www\./, '').toLowerCase() || 'unknown';
+  }
+}
+
+async function fetchQbitClient(client: BetaQbitClient): Promise<QbitTrackerAggregate[]> {
+  const jar: string[] = [];
+  const baseUrl = client.baseUrl.replace(/\/+$/, '');
+  if (client.username || client.password) {
+    const login = await axios.post(
+      `${baseUrl}/api/v2/auth/login`,
+      new URLSearchParams({ username: client.username ?? '', password: client.password ?? '' }).toString(),
+      {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        timeout: 8000,
+        validateStatus: () => true,
+      },
+    );
+    const cookie = login.headers['set-cookie'];
+    if (Array.isArray(cookie)) jar.push(...cookie.map(item => item.split(';')[0]));
+    if (login.status >= 400 || String(login.data).trim() !== 'Ok.') {
+      throw new Error(`Login qBittorrent refuse (${login.status})`);
+    }
+  }
+
+  const response = await axios.get(`${baseUrl}/api/v2/torrents/info`, {
+    timeout: 12000,
+    headers: jar.length ? { Cookie: jar.join('; ') } : undefined,
+  });
+  const torrents = Array.isArray(response.data) ? response.data as Array<Record<string, unknown>> : [];
+  const groups = new Map<string, QbitTrackerAggregate>();
+  for (const torrent of torrents) {
+    const host = trackerHost(String(torrent.tracker || torrent.magnet_uri || 'unknown'));
+    const existing = groups.get(host) ?? {
+      clientId: client.id,
+      clientLabel: client.label,
+      trackerHost: host,
+      torrentCount: 0,
+      seedingCount: 0,
+      leechingCount: 0,
+      uploadedBytes: 0,
+      downloadedBytes: 0,
+      ratio: null,
+      totalSizeBytes: 0,
+    };
+    const state = String(torrent.state || '');
+    const up = Number(torrent.uploaded ?? torrent.uploaded_session ?? 0);
+    const down = Number(torrent.downloaded ?? torrent.downloaded_session ?? 0);
+    existing.torrentCount += 1;
+    existing.seedingCount += state.toLowerCase().includes('up') || state.toLowerCase().includes('seed') ? 1 : 0;
+    existing.leechingCount += state.toLowerCase().includes('down') || state.toLowerCase().includes('meta') ? 1 : 0;
+    existing.uploadedBytes += Number.isFinite(up) ? up : 0;
+    existing.downloadedBytes += Number.isFinite(down) ? down : 0;
+    existing.totalSizeBytes += Number(torrent.size ?? 0) || 0;
+    groups.set(host, existing);
+  }
+  for (const item of groups.values()) {
+    item.ratio = item.downloadedBytes > 0
+      ? item.uploadedBytes / item.downloadedBytes
+      : (item.uploadedBytes > 0 ? Number.POSITIVE_INFINITY : 0);
+  }
+  return [...groups.values()].sort((a, b) => a.trackerHost.localeCompare(b.trackerHost));
+}
+
+async function refreshBetaQbitStats(settings = loadBetaSettings()): Promise<QbitTrackerAggregate[]> {
+  const enabled = settings.qbitClients.filter(client => client.enabled);
+  const results: QbitTrackerAggregate[] = [];
+  for (const client of enabled) {
+    results.push(...await fetchQbitClient(client));
+  }
+  betaQbitStats = results;
+  betaQbitLastRefresh = new Date().toISOString();
+  return results;
+}
+
+async function sendBetaNotification(target: BetaNotificationTarget, message: string): Promise<void> {
+  if (target.type === 'discord') {
+    await axios.post(target.url, { content: message }, { timeout: 8000 });
+    return;
+  }
+  await axios.post(target.url, { title: 'Tracker Dashboard Beta', body: message }, { timeout: 8000 });
 }
 
 export async function start(): Promise<void> {
@@ -1611,6 +1887,100 @@ export async function start(): Promise<void> {
       schedule: schedules.get(id) ?? null,
     }));
     res.json({ trackers: safe });
+  });
+
+  app.get('/api/beta/overview', (_req, res) => {
+    trackers = normalizeTrackerConfigs();
+    const settings = loadBetaSettings();
+    const trackerHosts = new Map(trackers.map(tracker => [trackerHost(tracker.baseUrl), tracker.id]));
+    const qbitByTracker = betaQbitStats.map(item => ({
+      ...item,
+      trackerId: trackerHosts.get(item.trackerHost) ?? null,
+    }));
+    const cookieSummaries = listTrackerDefinitionFiles().map(definition => {
+      const configured = trackers.find(tracker => tracker.id === definition.id);
+      const hasCookie = hasTrackerCookie(definition.id);
+      const cookieOnly = Boolean(configured?.login?.cookieOnly ?? loadTrackerDefinitionFile(definition.id)?.login?.cookieOnly);
+      return { trackerId: definition.id, trackerName: definition.name, hasCookie, cookieOnly };
+    });
+    res.json({
+      ok: true,
+      settings: sanitizeBetaSettings(settings),
+      qbitStats: qbitByTracker,
+      qbitLastRefresh: betaQbitLastRefresh,
+      trackerStatuses: visibleStats(trackers).map(stat => ({
+        id: stat.id,
+        name: stat.name,
+        status: stat.status,
+        stale: Boolean(stat.stale),
+        ratioless: Boolean(trackers.find(tracker => tracker.id === stat.id)?.ratioless),
+        mode: stat.status === 'ok'
+          ? (hasTrackerCookie(stat.id) ? 'cookie-only' : 'fonctionne')
+          : (stat.error?.toLowerCase().includes('captcha') || stat.error?.toLowerCase().includes('cloudflare') ? 'captcha' : 'cassé'),
+        siteReachability: stat.stale?.siteReachability ?? stat.siteReachability ?? null,
+      })),
+      cookieSummaries,
+    });
+  });
+
+  app.get('/api/beta/history', (req, res) => {
+    const trackerId = typeof req.query.trackerId === 'string' && req.query.trackerId ? req.query.trackerId : null;
+    const limit = Number(req.query.limit ?? 500);
+    res.json({ ok: true, snapshots: listStatSnapshots(trackerId, limit) });
+  });
+
+  app.get('/api/beta/settings', (_req, res) => {
+    res.json({ ok: true, settings: sanitizeBetaSettings(loadBetaSettings()) });
+  });
+
+  app.post('/api/beta/settings', (req, res) => {
+    try {
+      const settings = saveBetaSettingsPayload(req.body);
+      res.json({ ok: true, settings: sanitizeBetaSettings(settings) });
+    } catch (err: unknown) {
+      res.status(400).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.post('/api/beta/qbit/test', async (req, res) => {
+    try {
+      const raw = req.body as Partial<BetaQbitClient>;
+      const current = loadBetaSettings().qbitClients.find(item => item.id === raw.id);
+      const client: BetaQbitClient = {
+        id: raw.id || 'test',
+        label: String(raw.label || 'qBittorrent').trim() || 'qBittorrent',
+        baseUrl: String(raw.baseUrl || '').trim().replace(/\/+$/, ''),
+        username: String(raw.username || '').trim(),
+        password: raw.password === '••••••••' ? (current?.password ?? '') : (raw.password ?? ''),
+        enabled: true,
+      };
+      const stats = await fetchQbitClient(client);
+      res.json({ ok: true, trackerCount: stats.length, torrentCount: stats.reduce((sum, item) => sum + item.torrentCount, 0) });
+    } catch (err: unknown) {
+      res.json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.post('/api/beta/qbit/refresh', async (_req, res) => {
+    try {
+      const stats = await refreshBetaQbitStats();
+      res.json({ ok: true, stats, lastRefresh: betaQbitLastRefresh });
+    } catch (err: unknown) {
+      res.status(502).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.post('/api/beta/notifications/test', async (req, res) => {
+    const settings = loadBetaSettings();
+    const id = typeof req.body?.targetId === 'string' ? req.body.targetId : '';
+    const target = settings.notificationTargets.find(item => item.id === id);
+    if (!target) return res.status(404).json({ ok: false, error: 'Destination introuvable' });
+    try {
+      await sendBetaNotification(target, 'Test Tracker Dashboard Beta : notification recue.');
+      res.json({ ok: true });
+    } catch (err: unknown) {
+      res.json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    }
   });
 
   app.get('/api/trackers', (_req, res) => {

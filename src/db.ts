@@ -47,6 +47,15 @@ export interface TrackerDefinitionSummary {
   enabled: boolean;
 }
 
+export interface StatSnapshotSummary {
+  trackerId: string;
+  trackerName: string;
+  status: string;
+  error: string | null;
+  fields: Record<string, string | number>;
+  capturedAt: string;
+}
+
 let db: Database | null = null;
 
 export function getDb(): Database {
@@ -519,4 +528,44 @@ export function getLatestOkStatSnapshot(tracker: TrackerConfig): TrackerStats | 
   } catch {
     return null;
   }
+}
+
+export function listStatSnapshots(trackerId: string | null, limit = 500): StatSnapshotSummary[] {
+  const max = Math.max(1, Math.min(Math.floor(limit), 5000));
+  const rows = trackerId
+    ? getDb()
+        .prepare(`
+          SELECT tracker_id, tracker_name, status, error, fields_json, captured_at
+          FROM stat_snapshots
+          WHERE tracker_id = ?
+          ORDER BY captured_at DESC, id DESC
+          LIMIT ?
+        `)
+        .all(trackerId, max)
+    : getDb()
+        .prepare(`
+          SELECT tracker_id, tracker_name, status, error, fields_json, captured_at
+          FROM stat_snapshots
+          ORDER BY captured_at DESC, id DESC
+          LIMIT ?
+        `)
+        .all(max);
+
+  return rows
+    .map(row => {
+      try {
+        return {
+          trackerId: String(row.tracker_id),
+          trackerName: String(row.tracker_name),
+          status: String(row.status),
+          error: row.error === null || row.error === undefined ? null : String(row.error),
+          fields: JSON.parse(String(row.fields_json)) as Record<string, string | number>,
+          capturedAt: String(row.captured_at),
+        };
+      } catch {
+        return null;
+      }
+    })
+    .filter((row): row is StatSnapshotSummary => row !== null)
+    .reverse();
 }
