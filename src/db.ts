@@ -157,6 +157,27 @@ export function setTrackerCookie(trackerId: string, cookie: string): void {
   setJsonSetting('tracker_cookies', all);
 }
 
+// ─── Secrets TOTP (2FA) par tracker ───────────────────────────────────────────
+// On stocke le secret base32 (type Google Authenticator) fourni par l'utilisateur.
+type TrackerTotpMap = Record<string, string>;
+
+export function getTrackerTotpSecret(trackerId: string): string {
+  const all = getJsonSetting('tracker_totp', {} as TrackerTotpMap);
+  return all && typeof all[trackerId] === 'string' ? all[trackerId] : '';
+}
+
+export function hasTrackerTotpSecret(trackerId: string): boolean {
+  return getTrackerTotpSecret(trackerId).trim().length > 0;
+}
+
+export function setTrackerTotpSecret(trackerId: string, secret: string): void {
+  const all = getJsonSetting('tracker_totp', {} as TrackerTotpMap);
+  const value = (secret ?? '').replace(/\s+/g, '').trim();
+  if (value) all[trackerId] = value;
+  else delete all[trackerId];
+  setJsonSetting('tracker_totp', all);
+}
+
 export function importLegacySettingsIfNeeded(): void {
   const existing = getDb().prepare('SELECT value FROM settings WHERE key = ?').get('proxy');
   if (existing || !fs.existsSync(path.join(CONFIG_DIR, 'settings.json'))) return;

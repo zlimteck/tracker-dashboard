@@ -15,10 +15,17 @@ export interface LoginConfig {
   contentType?: 'form' | 'json';
   /**
    * Corps de la requête de login.
-   * Placeholders supportés : {{username}}, {{password}},
+   * Placeholders supportés : {{username}}, {{password}}, {{otp}} (code TOTP),
    * et {{nomClé}} pour les valeurs extraites dans preStep (ex: {{_csrf}}).
    */
   body: Record<string, string>;
+  /**
+   * Nom du champ de formulaire recevant le code 2FA (TOTP).
+   * Si défini et qu'un secret TOTP est enregistré pour le tracker, le code
+   * courant y est injecté automatiquement (mode HTTP et navigateur).
+   * Ex UNIT3D : "two_step_code" ; autres : "code", "otp", "totp", "mfa".
+   */
+  otpField?: string;
   /** Étape optionnelle pour récupérer un CSRF token avant de poster les credentials */
   preStep?: PreLoginStep;
   /**

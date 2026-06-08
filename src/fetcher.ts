@@ -13,7 +13,12 @@ import {
   type FieldExtractor,
   type Credentials,
 } from './types.js';
-import { getProxyConfig } from './proxy.js';
+import { getProxyConfig, ensureProxyReady } from './proxy.js';
+import { closeAllSshTunnels } from './sshTunnel.js';
+import { curlImpersonateGet, fastFetchEnabled } from './curlImpersonate.js';
+import { buildCookieHeader } from './browserFetcher.js';
+import { getTrackerTotpSecret } from './db.js';
+import { generateTotp } from './totp.js';
 import { selectUserAgent } from './userAgent.js';
 import { closeBrowserSession, closeBrowserSessions, fetchWithBrowser } from './browserFetcher.js';
 
@@ -329,6 +334,7 @@ export function invalidateSession(trackerId: string): void {
 export function invalidateAllSessions(): void {
   sessions.clear();
   closeBrowserSessions().catch(() => {});
+  closeAllSshTunnels(); // un changement de proxy doit fermer les tunnels SSH existants
   console.log('[Proxy] Sessions invalidées — reconnexion au prochain refresh');
 }
 
@@ -348,6 +354,14 @@ async function doLogin(
     username: creds.username,
     password: creds.password,
   };
+  // 2FA : si un secret TOTP est enregistre pour ce tracker, on genere le code
+  // courant. Disponible via le placeholder {{otp}} dans le body, et injecte
+  // automatiquement dans login.otpField si defini.
+  const totpSecret = getTrackerTotpSecret(tracker.id);
+  if (totpSecret) {
+    const code = generateTotp(totpSecret);
+    if (code) vars.otp = code;
+  }
   let hiddenInputs: Record<string, string> = {};
 
   // ── 1. Pre-step (CSRF token, etc.) ─────────────────────────────────────────
@@ -373,6 +387,10 @@ async function doLogin(
   const bodyObj: Record<string, string> = { ...hiddenInputs };
   for (const [k, v] of Object.entries(cfg.body)) {
     bodyObj[k] = interpolate(v, vars);
+  }
+  // Injection auto du code 2FA dans le champ configure (si pas deja present)
+  if (vars.otp && cfg.otpField && !(cfg.otpField in bodyObj)) {
+    bodyObj[cfg.otpField] = vars.otp;
   }
 
   let loginRes;
@@ -509,6 +527,8 @@ export async function fetchTracker(
   tracker: TrackerConfig,
   creds: { username: string; password: string },
 ): Promise<TrackerStats> {
+  // Proxy SSH : etablir le tunnel SSH + SOCKS5 local avant tout (HTTP comme navigateur).
+  await ensureProxyReady(tracker.id);
   let session = getSession(tracker.id);
   const vars: Record<string, string> = {
     username: creds.username,
@@ -559,8 +579,39 @@ export async function fetchTracker(
     };
   };
 
+  // Fast-path curl-impersonate : pour un tracker en mode navigateur disposant d'un
+  // cookie de session, on tente d'abord une requete HTTP impersonee (sans Chromium).
+  // Si la page est rendue cote serveur et la session valide -> stats directes.
+  // Sinon (SPA, session morte, binaire absent) -> on retombe sur le navigateur.
+  const tryCurlFastPath = async (): Promise<TrackerStats | null> => {
+    if (!fastFetchEnabled()) return null;
+    const cookie = buildCookieHeader(tracker.id);
+    if (!cookie) return null;
+    const url = resolveUrl(tracker.baseUrl, interpolate(tracker.fetch.url, vars));
+    // Pas de userAgent ici : le wrapper curl-impersonate pose deja un UA Chrome
+    // coherent avec son empreinte TLS. Le surcharger casserait la coherence.
+    const result = await curlImpersonateGet(tracker.id, url, {
+      cookie,
+      timeoutMs: 30_000,
+    }).catch(() => null);
+    if (!result || result.status >= 400 || !result.body) return null;
+    if (hasFailurePattern(result.body, tracker.login.failurePatterns)) return null;
+    if (isAnubisChallenge(result.body)) return null;
+    try {
+      const stats = buildStatsFromHtml(url, result.body); // throw si aucune valeur extraite
+      console.log(`  [${tracker.name}] Fast-path curl-impersonate OK (navigateur evite)`);
+      return stats;
+    } catch {
+      return null;
+    }
+  };
+
   const attempt = async (isRetry = false): Promise<TrackerStats> => {
     if (tracker.fetch.mode === 'browser') {
+      if (!isRetry) {
+        const fast = await tryCurlFastPath();
+        if (fast) return fast;
+      }
       const browserResult = await fetchWithBrowser(tracker, creds);
       // Si on a confirme la session via un indicateur DOM specifique (TR4KER : RATIO/UPLOAD/DOWNLOAD
       // visibles apres hydratation SPA), on ignore les failurePatterns qui peuvent matcher

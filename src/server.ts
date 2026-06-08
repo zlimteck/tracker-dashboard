@@ -8,9 +8,10 @@ import { resetBrowserProfile, closeBrowserSession } from './browserFetcher.js';
 import { type FieldExtractor, type TrackerConfig, type TrackerStats } from './types.js';
 import {
   loadProxySettings, saveProxySettings, buildProxyConfig, logProxyStatus,
-  loadProxyOverrides, saveProxyOverrides,
+  loadProxyOverrides, saveProxyOverrides, toSshConfig,
   type ProxySettings, type ProxyOverride,
 } from './proxy.js';
+import { ensureSshSocks } from './sshTunnel.js';
 import crypto from 'crypto';
 import {
   loadIncidents, setIncident, getIncident, clearIncident,
@@ -42,6 +43,8 @@ import {
   setJsonSetting,
   hasTrackerCookie,
   setTrackerCookie,
+  hasTrackerTotpSecret,
+  setTrackerTotpSecret,
 } from './db.js';
 import {
   createSessionCookie,
@@ -1711,6 +1714,7 @@ export async function start(): Promise<void> {
             username: credentials.get(definition.id)?.username ?? '',
             hasPassword: credentials.get(definition.id)?.hasPassword ?? false,
             hasCookie: hasTrackerCookie(definition.id),
+            hasTotp: hasTrackerTotpSecret(definition.id),
             cookieOnly: Boolean(tracker?.login?.cookieOnly ?? loadTrackerDefinitionFile(definition.id)?.login?.cookieOnly),
             updatedAt: credentials.get(definition.id)?.updatedAt ?? null,
           };
@@ -1774,8 +1778,13 @@ export async function start(): Promise<void> {
 
   app.get('/api/settings/proxy', (_req, res) => {
     const proxy = loadProxySettings();
-    // Ne jamais renvoyer le mot de passe en clair — juste indiquer s'il est défini
-    res.json({ ...proxy, password: proxy.password ? '••••••••' : '' });
+    // Ne jamais renvoyer les secrets en clair — juste indiquer s'ils sont définis
+    res.json({
+      ...proxy,
+      password: proxy.password ? '••••••••' : '',
+      privateKey: proxy.privateKey ? '••••••••' : '',
+      passphrase: proxy.passphrase ? '••••••••' : '',
+    });
   });
 
   app.post('/api/settings/proxy', (req, res) => {
@@ -1787,6 +1796,8 @@ export async function start(): Promise<void> {
         port,
         username,
         password,
+        privateKey,
+        passphrase,
         directConnectAllowed,
       } = req.body as ProxySettings;
       const current = loadProxySettings();
@@ -1796,8 +1807,10 @@ export async function start(): Promise<void> {
         host:     host     ?? current.host,
         port:     port     ?? current.port,
         username: username ?? current.username,
-        // Si le client renvoie les bullets, on garde l'ancien password
+        // Si le client renvoie les bullets, on garde l'ancien secret
         password: password === '••••••••' ? current.password : (password ?? current.password),
+        privateKey: privateKey === '••••••••' ? current.privateKey : (privateKey ?? current.privateKey),
+        passphrase: passphrase === '••••••••' ? current.passphrase : (passphrase ?? current.passphrase),
         directConnectAllowed: Boolean(directConnectAllowed),
       };
       saveProxySettings(updated);
@@ -1812,6 +1825,32 @@ export async function start(): Promise<void> {
     }
   });
 
+  // ── Moteur navigateur : chromium (defaut) ou cloak (CloakBrowser furtif) ──
+  app.get('/api/settings/browser-engine', (_req, res) => {
+    res.json({ engine: getJsonSetting('browser_engine', 'chromium') });
+  });
+
+  app.post('/api/settings/browser-engine', (req, res) => {
+    const engine = req.body?.engine === 'cloak' ? 'cloak' : 'chromium';
+    setJsonSetting('browser_engine', engine);
+    // On ferme les contextes navigateur existants pour repartir sur le bon moteur.
+    invalidateAllSessions();
+    console.log(`[Navigateur] Moteur sélectionné : ${engine === 'cloak' ? 'CloakBrowser (furtif)' : 'Chromium'}`);
+    res.json({ ok: true, engine });
+  });
+
+  // ── Fast-path curl-impersonate (lecture HTTP impersonee avant navigateur) ──
+  app.get('/api/settings/fast-fetch', (_req, res) => {
+    res.json({ enabled: getJsonSetting('fast_fetch', true as boolean) !== false });
+  });
+
+  app.post('/api/settings/fast-fetch', (req, res) => {
+    const enabled = req.body?.enabled !== false;
+    setJsonSetting('fast_fetch', enabled);
+    console.log(`[Fast-path] curl-impersonate ${enabled ? 'activé' : 'désactivé'}`);
+    res.json({ ok: true, enabled });
+  });
+
   // ── Proxies par tracker (overrides) ───────────────────────────────────────
   app.get('/api/settings/proxy-overrides', (_req, res) => {
     // On masque les passwords par des bullets (cote front on differencie ainsi
@@ -1819,6 +1858,8 @@ export async function start(): Promise<void> {
     const sanitized = loadProxyOverrides().map(o => ({
       ...o,
       password: o.password ? '••••••••' : '',
+      privateKey: o.privateKey ? '••••••••' : '',
+      passphrase: o.passphrase ? '••••••••' : '',
     }));
     res.json({ ok: true, overrides: sanitized });
   });
@@ -1841,6 +1882,10 @@ export async function start(): Promise<void> {
         const id = typeof raw.id === 'string' && raw.id ? raw.id : crypto.randomUUID();
         const prev = previousById.get(id);
         const passwordIn = typeof raw.password === 'string' ? raw.password : '';
+        const isDirect = Boolean(raw.direct) || raw.type === 'direct';
+        const isSsh = !isDirect && raw.type === 'ssh';
+        const privateKeyIn = typeof raw.privateKey === 'string' ? raw.privateKey : '';
+        const passphraseIn = typeof raw.passphrase === 'string' ? raw.passphrase : '';
         const override: ProxyOverride = {
           id,
           label:    typeof raw.label === 'string' ? raw.label.trim().slice(0, 64) : '',
@@ -1855,6 +1900,9 @@ export async function start(): Promise<void> {
           username: typeof raw.username === 'string' ? raw.username.trim() : '',
           // Si le front renvoie les bullets, on conserve le mot de passe existant
           password: passwordIn === '••••••••' ? (prev?.password ?? '') : passwordIn,
+          // Secrets SSH (idem : bullets => on garde l'existant). Vides hors mode SSH.
+          privateKey: !isSsh ? '' : (privateKeyIn === '••••••••' ? (prev?.privateKey ?? '') : privateKeyIn),
+          passphrase: !isSsh ? '' : (passphraseIn === '••••••••' ? (prev?.passphrase ?? '') : passphraseIn),
         };
 
         if (override.enabled) {
@@ -1906,6 +1954,19 @@ export async function start(): Promise<void> {
     invalidateSession(id);
     console.log(`[Cookies] ${id} : cookie de session ${cookie.trim() ? 'enregistre' : 'efface'}`);
     res.json({ ok: true, hasCookie: hasTrackerCookie(id) });
+  });
+
+  // ── Secret TOTP (2FA) par tracker ─────────────────────────────────────────
+  app.post('/api/trackers/:trackerId/totp', (req, res) => {
+    const id = req.params.trackerId;
+    if (!new Set(listTrackerDefinitionFiles().map(t => t.id)).has(id)) {
+      return res.status(404).json({ ok: false, error: 'Tracker inconnu' });
+    }
+    const secret = typeof req.body?.secret === 'string' ? req.body.secret : '';
+    setTrackerTotpSecret(id, secret);
+    invalidateSession(id);
+    console.log(`[TOTP] ${id} : secret 2FA ${secret.trim() ? 'enregistre' : 'efface'}`);
+    res.json({ ok: true, hasTotp: hasTrackerTotpSecret(id) });
   });
 
   // ── Reset du profil navigateur d'un tracker ───────────────────────────────
@@ -1980,15 +2041,28 @@ export async function start(): Promise<void> {
   });
 
   app.post('/api/proxy/test', async (req, res) => {
-    const { type = 'socks5', host, port, username, password } = req.body as ProxySettings;
+    const { type = 'socks5', host, port, username, password, privateKey, passphrase } = req.body as ProxySettings;
     if (!host || !port) return res.status(400).json({ ok: false, error: 'Hôte et port requis' });
 
     const current = loadProxySettings();
-    const cfg = buildProxyConfig({
+    const effective: ProxySettings = {
       enabled: true, type, host, port, username,
-      password: password === '••••••••' ? current.password : password,
+      password: password === '••••••••' ? current.password : (password ?? ''),
+      privateKey: privateKey === '••••••••' ? current.privateKey : (privateKey ?? ''),
+      passphrase: passphrase === '••••••••' ? current.passphrase : (passphrase ?? ''),
       directConnectAllowed: current.directConnectAllowed,
-    });
+    };
+    // Proxy SSH : etablir le tunnel avant de construire l'agent SOCKS local.
+    if (type === 'ssh') {
+      const ssh = toSshConfig(effective);
+      if (!ssh) return res.json({ ok: false, error: 'Config SSH invalide (hôte/port/utilisateur requis)' });
+      try {
+        await ensureSshSocks(ssh);
+      } catch (err: unknown) {
+        return res.json({ ok: false, error: `Tunnel SSH: ${err instanceof Error ? err.message : String(err)}` });
+      }
+    }
+    const cfg = buildProxyConfig(effective);
 
     try {
       const r = await axios.get<{ ip: string }>('https://api.ipify.org?format=json', {

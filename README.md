@@ -25,6 +25,10 @@ Export Prometheus + dashboard Grafana — endpoint `/metrics` (protégé par tok
 
 ## Changements récents
 
+- Double authentification 2FA (TOTP) par tracker (merci Autovisit pour l'idée)
+- Proxy SSH (mot de passe ou clé privée), en plus de HTTP/HTTPS/SOCKS
+- Option moteur navigateur furtif CloakBrowser, en alternative à Chromium
+- Lecture rapide via curl-impersonate quand c'est possible (évite Chromium)
 - Meilleure identification des trackers en cookie only (captchas, Cloudflare...)
 - Ajout option refresh 6 et 12h
 - Allègement restart du Docker : données < 24h servies en priorité
@@ -55,6 +59,20 @@ Quelques extensions pratiques pour exporter les cookies :
 - [Get cookies.txt LOCALLY](https://github.com/kairi003/Get-cookies.txt-LOCALLY)
 
 Le cookie est optionnel et propre à chaque tracker : laissez le champ vide pour les sites qui se connectent normalement. Un cookie de session finit par expirer (de quelques heures à plusieurs semaines selon le site) ; il suffit alors d'en recoller un frais.
+
+
+## Double authentification (2FA / TOTP)
+
+Pour les trackers protégés par une authentification à deux facteurs basée sur le temps (TOTP, type Google Authenticator / Authy), le dashboard peut générer lui-même le code à 6 chiffres à chaque connexion.
+
+Renseignez le **secret 2FA** (la clé base32 affichée à côté du QR code lors de l'activation du 2FA, ex. `JBSWY3DPEHPK3PXP`) dans : liste des trackers → tracker concerné → **Options avancées** → **Secret 2FA (TOTP)**.
+
+- Le secret est stocké côté serveur et n'est jamais renvoyé en clair par l'API (seul un indicateur de présence est exposé).
+- Le code est calculé en local (RFC 6238, HMAC-SHA1, 6 chiffres, fenêtre de 30 s) ; aucun service externe n'est sollicité.
+- En mode navigateur, le code est saisi automatiquement dans le champ du formulaire (`two_step_code` pour UNIT3D, sinon `code`/`otp`/`totp`/`mfa`, ou le champ précisé par `otpField` dans la définition du tracker).
+- En mode HTTP, utilisez le placeholder `{{otp}}` dans le corps de login, ou définissez `login.otpField` pour une injection automatique.
+
+Laissez le champ vide pour les trackers sans 2FA.
 
 
 ## Captures d'écran
@@ -94,10 +112,38 @@ Pour autoriser les connexions, il faut soit :
 - cocher explicitement l'option de connexion directe sans proxy.
 Cette sécurité s'applique aussi au premier lancement du conteneur.
 
+Types de proxy pris en charge : **HTTP**, **HTTPS**, **SOCKS4**, **SOCKS5** et **SSH** — en proxy global comme en override par tracker.
+
+### Proxy SSH
+
+Avec le type **SSH**, le dashboard ouvre une connexion SSH vers le serveur indiqué et route le trafic des trackers à travers un tunnel (un serveur SOCKS5 local adossé au forwarding dynamique SSH). Pratique pour sortir via l'IP d'un serveur auquel on a un accès SSH, sans installer de proxy dédié.
+
+- Renseignez **hôte / port / utilisateur**, puis **un mot de passe OU une clé privée** (PEM OpenSSH). Une passphrase de clé est acceptée si nécessaire.
+- Les secrets (mot de passe, clé privée, passphrase) sont stockés côté serveur et ne sont jamais renvoyés en clair par l'API (masqués par des points).
+- Le bouton **Tester** établit le tunnel et vérifie l'IP de sortie.
+
 
 ## User-Agent aléatoire
 
 Les connexions utilisent une rotation automatique de User-Agents issue du paquet `top-user-agents`. Il est choisi automatiquement pour les nouvelles sessions HTTP et les nouveaux contextes navigateur.
+
+
+## Moteur navigateur (CloakBrowser)
+
+Les lectures en mode navigateur utilisent **Chromium** (Playwright) par défaut. Une option dans la WebUI (panneau Proxy → **Moteur navigateur**) permet de basculer sur **[CloakBrowser](https://github.com/CloakHQ/CloakBrowser)**, un Chromium modifié au niveau source pour présenter une empreinte de vrai navigateur (TLS, fingerprint).
+
+Intérêt par rapport au Chromium standard : il franchit davantage de protections anti-bot — notamment certains challenges Cloudflare Turnstile qui se valident automatiquement — donc moins de trackers nécessitant un cookie de session collé à la main. Les performances sont équivalentes (c'est un navigateur complet).
+
+Le moteur est embarqué dans l'image Docker. S'il est indisponible (binaire absent, échec de lancement), l'application repart automatiquement sur Chromium : activer l'option ne peut donc pas casser les lectures.
+
+
+## Lecture rapide (curl-impersonate)
+
+Lancer un navigateur complet pour chaque lecture est coûteux. Quand c'est possible, le dashboard tente d'abord une simple requête HTTP avec l'empreinte d'un vrai navigateur via **[curl-impersonate](https://github.com/lexiforest/curl-impersonate)** (usurpation de l'empreinte TLS/HTTP2), sans démarrer Chromium.
+
+Cette voie rapide s'active automatiquement pour un tracker en **mode navigateur** qui dispose d'un **cookie de session** valide et dont la page de stats est rendue côté serveur. Si la page nécessite du JavaScript (SPA), si la session n'est plus valide, ou si le binaire n'est pas présent, l'application retombe **automatiquement** sur le navigateur — aucune lecture n'est cassée.
+
+Le binaire curl-impersonate est embarqué dans l'image Docker. L'option se règle dans la WebUI (panneau Proxy → **Moteur navigateur** → *Lecture rapide*), activée par défaut.
 
 
 ## Connexions automatiques
@@ -200,3 +246,9 @@ Exemple schématique :
 | `number` | Convertit en nombre décimal |
 | `integer` | Convertit en entier |
 | `string` | Conserve la valeur en texte |
+
+
+## Remerciements
+
+- [Autovisit](https://github.com/Gusdezup/Autovisit) — pour l'idée de la prise en charge du 2FA (TOTP) côté login.
+- [CloakBrowser](https://github.com/CloakHQ/CloakBrowser) — moteur Chromium furtif proposé en option pour mieux passer les protections anti-bot.

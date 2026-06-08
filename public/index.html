@@ -825,11 +825,12 @@
       </label>
       <div>
         <label style="display:block;margin-bottom:4px;font-size:11px">Type</label>
-        <select id="proxy-type">
+        <select id="proxy-type" onchange="syncProxySshRow()">
           <option value="socks5">SOCKS5</option>
           <option value="socks4">SOCKS4</option>
           <option value="http">HTTP</option>
           <option value="https">HTTPS</option>
+          <option value="ssh">SSH</option>
         </select>
       </div>
       <div>
@@ -852,6 +853,16 @@
         <input type="password" id="proxy-password" placeholder="—" style="max-width:300px" />
       </div>
     </div>
+    <div class="proxy-form" id="proxy-ssh-row" style="margin-top:8px; display:none">
+      <div></div>
+      <div style="grid-column:span 4">
+        <label style="display:block;margin-bottom:4px;font-size:11px">Clé privée SSH <span style="color:var(--muted)">(SSH — alternative au mot de passe)</span></label>
+        <textarea id="proxy-private-key" rows="3" spellcheck="false" style="width:100%; max-width:520px; resize:vertical; font-family:monospace; font-size:11px; white-space:pre" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----"></textarea>
+        <label style="display:block;margin:8px 0 4px;font-size:11px">Passphrase de la clé <span style="color:var(--muted)">(optionnel)</span></label>
+        <input type="password" id="proxy-passphrase" placeholder="—" style="max-width:300px" />
+        <p style="font-size:11px; color:var(--muted); margin:6px 0 0">SSH : renseigne hôte/port/utilisateur ci-dessus, puis un mot de passe OU une clé privée. Le dashboard ouvre un tunnel SSH et route le trafic via un SOCKS5 local.</p>
+      </div>
+    </div>
     <div class="proxy-form" style="margin-top:10px">
       <div></div>
       <label class="toggle-switch" style="grid-column:span 4" title="Autoriser les connexions aux trackers sans proxy">
@@ -865,6 +876,29 @@
       <button class="btn-test" onclick="testProxy()">Tester</button>
       <span id="proxy-test-result"></span>
     </div>
+
+    <!-- ── Moteur navigateur ────────────────────────────────────────────── -->
+    <h2 style="margin-top:24px">Moteur navigateur</h2>
+    <div class="proxy-form" style="align-items:flex-start">
+      <label class="toggle-switch" style="grid-column:span 5" title="Utiliser CloakBrowser au lieu de Chromium">
+        <input type="checkbox" id="browser-engine-cloak" onchange="saveBrowserEngine()">
+        <div class="toggle-track"><div class="toggle-knob"></div></div>
+        <span>Utiliser <b>CloakBrowser</b> (moteur furtif) à la place de Chromium</span>
+      </label>
+    </div>
+    <p style="font-size:12px; color:var(--muted); margin:8px 0 0; max-width:760px">
+      Par défaut, les lectures en mode navigateur utilisent <b>Chromium</b> (Playwright). <a href="https://github.com/CloakHQ/CloakBrowser" target="_blank" rel="noreferrer noopener" style="color:var(--blue); text-decoration:none">CloakBrowser</a> est un Chromium modifié au niveau source pour ressembler à un vrai navigateur côté empreinte (TLS, fingerprint), ce qui lui permet de franchir davantage de protections anti-bot — notamment certains challenges Cloudflare Turnstile qui se valident automatiquement — donc moins de sites nécessitant un cookie collé à la main. Mêmes performances qu'un Chromium classique (c'est un navigateur complet). Si le moteur est indisponible, l'app repart automatiquement sur Chromium.
+    </p>
+    <div class="proxy-form" style="align-items:flex-start; margin-top:14px">
+      <label class="toggle-switch" style="grid-column:span 5" title="Lecture rapide via curl-impersonate">
+        <input type="checkbox" id="fast-fetch-enabled" onchange="saveFastFetch()">
+        <div class="toggle-track"><div class="toggle-knob"></div></div>
+        <span>Lecture rapide (<b>curl-impersonate</b>) quand c'est possible</span>
+      </label>
+    </div>
+    <p style="font-size:12px; color:var(--muted); margin:8px 0 0; max-width:760px">
+      Pour les trackers qui nécessitent un cookie de session, tente d'abord une simple requête HTTP avec empreinte de vrai navigateur (sans lancer Chromium) : plus rapide et bien plus léger. Si la page nécessite du JavaScript ou que la session n'est plus valide, l'app retombe automatiquement sur le navigateur. Sans effet si le binaire curl-impersonate n'est pas présent dans l'image.
+    </p>
 
     <!-- ── Overrides par tracker ────────────────────────────────────────── -->
     <h2 style="margin-top:24px">Proxys spécifiques par tracker</h2>
@@ -1712,7 +1746,7 @@
                   <button class="btn-test" style="padding:6px 10px" onclick="setTrackerEnabled('${safeId}', ${isEnabled ? 'false' : 'true'})">${isEnabled ? 'Retirer' : 'Ajouter'}</button>
                 </div>
                 <details class="definition-advanced" style="grid-column:1/-1">
-                  <summary>Options avancées${credential.hasCookie ? ' · <b style="color:var(--green)">cookie défini</b>' : ''}</summary>
+                  <summary>Options avancées${credential.hasCookie ? ' · <b style="color:var(--green)">cookie défini</b>' : ''}${credential.hasTotp ? ' · <b style="color:var(--green)">2FA défini</b>' : ''}</summary>
                   <div class="definition-advanced-body">
                     <div class="advanced-field advanced-cookie-field">
                       <label>Cookie de session <span style="color:var(--muted)">— sites à CAPTCHA / Cloudflare Turnstile${credential.hasCookie ? ' · <b style="color:var(--green)">défini</b>' : ''}</span></label>
@@ -1721,6 +1755,15 @@
                           placeholder="${credential.hasCookie ? '•••••••• (enregistré — colle pour remplacer, vide pour effacer)' : 'Colle ici un fichier cookies.txt (Netscape), un export JSON Cookie-Editor, ou nom=valeur; nom2=valeur2'}"
                           title="Connecte-toi au site dans ton navigateur, exporte les cookies (extension cookies-txt / Cookie-Editor) ou copie-les depuis les DevTools (F12 → Application/Stockage → Cookies). Le dashboard les injecte dans le navigateur headless et saute le login + Turnstile."></textarea>
                         <button class="btn-save" style="padding:6px 10px" onclick="saveTrackerCookie('${safeId}', this)">Enregistrer cookie</button>
+                      </div>
+                    </div>
+                    <div class="advanced-field advanced-cookie-field">
+                      <label>Secret 2FA (TOTP) <span style="color:var(--muted)">— authentification à deux facteurs${credential.hasTotp ? ' · <b style="color:var(--green)">défini</b>' : ''}</span></label>
+                      <div class="advanced-cookie-row">
+                        <input class="tracker-input" id="credential-totp-${safeId}" type="password" autocomplete="off" spellcheck="false" style="flex:1; font-family:monospace; font-size:12px"
+                          placeholder="${credential.hasTotp ? '•••••••• (enregistré — saisis pour remplacer, vide pour effacer)' : 'Secret base32 (ex: JBSWY3DPEHPK3PXP) fourni à l\\'activation du 2FA'}"
+                          title="Colle ici le secret 2FA (la clé base32 affichée lors de l'activation du 2FA, à côté du QR code). Le dashboard génère lui-même le code à 6 chiffres à chaque login. Pour l'injection automatique dans le formulaire, le champ du code doit être configuré (otpField) dans la définition du tracker.">
+                        <button class="btn-save" style="padding:6px 10px" onclick="saveTrackerTotp('${safeId}', this)">Enregistrer 2FA</button>
                       </div>
                     </div>
                     <div class="advanced-field advanced-profile-field">
@@ -1765,6 +1808,30 @@
       btn.textContent = 'Erreur';
       setTimeout(() => { btn.disabled = false; btn.textContent = previous; }, 2000);
       console.warn('saveTrackerCookie:', e.message);
+    }
+  }
+
+  async function saveTrackerTotp(trackerId, btn) {
+    const input = document.getElementById(`credential-totp-${trackerId}`);
+    const secret = input ? input.value : '';
+    const previous = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '...';
+    try {
+      const r = await fetch(`/api/trackers/${encodeURIComponent(trackerId)}/totp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ secret }),
+      });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || 'Erreur');
+      btn.textContent = d.hasTotp ? '2FA enregistré' : '2FA effacé';
+      if (input) input.value = '';
+      setTimeout(() => { btn.disabled = false; btn.textContent = previous; loadTrackerDefinitionsPanel(); }, 1800);
+    } catch (e) {
+      btn.textContent = 'Erreur';
+      setTimeout(() => { btn.disabled = false; btn.textContent = previous; }, 2000);
+      console.warn('saveTrackerTotp:', e.message);
     }
   }
 
@@ -2004,10 +2071,56 @@
       document.getElementById('proxy-port').value       = d.port    || '';
       document.getElementById('proxy-username').value   = d.username|| '';
       document.getElementById('proxy-password').value   = d.password|| '';
+      document.getElementById('proxy-private-key').value = d.privateKey || '';
+      document.getElementById('proxy-passphrase').value  = d.passphrase || '';
       document.getElementById('proxy-direct-allowed').checked = Boolean(d.directConnectAllowed);
+      syncProxySshRow();
       // Refléter l'état dans le header
       document.getElementById('proxy-toggle').classList.toggle('active', d.enabled);
     } catch(e) { console.warn('Proxy settings unavailable', e); }
+  }
+
+  function syncProxySshRow() {
+    const isSsh = document.getElementById('proxy-type').value === 'ssh';
+    document.getElementById('proxy-ssh-row').style.display = isSsh ? '' : 'none';
+  }
+
+  async function loadBrowserEngine() {
+    try {
+      const r = await fetch('/api/settings/browser-engine');
+      const d = await r.json();
+      document.getElementById('browser-engine-cloak').checked = d.engine === 'cloak';
+    } catch (e) { console.warn('Browser engine unavailable', e); }
+  }
+
+  async function saveBrowserEngine() {
+    const engine = document.getElementById('browser-engine-cloak').checked ? 'cloak' : 'chromium';
+    try {
+      await fetch('/api/settings/browser-engine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ engine }),
+      });
+    } catch (e) { console.warn('saveBrowserEngine:', e.message); }
+  }
+
+  async function loadFastFetch() {
+    try {
+      const r = await fetch('/api/settings/fast-fetch');
+      const d = await r.json();
+      document.getElementById('fast-fetch-enabled').checked = d.enabled !== false;
+    } catch (e) { console.warn('Fast-fetch unavailable', e); }
+  }
+
+  async function saveFastFetch() {
+    const enabled = document.getElementById('fast-fetch-enabled').checked;
+    try {
+      await fetch('/api/settings/fast-fetch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      });
+    } catch (e) { console.warn('saveFastFetch:', e.message); }
   }
 
   async function saveSchedule(trackerId, enabled) {
@@ -2040,6 +2153,8 @@
           port:     document.getElementById('proxy-port').value.trim(),
           username: document.getElementById('proxy-username').value.trim(),
           password: document.getElementById('proxy-password').value,
+          privateKey: document.getElementById('proxy-private-key').value,
+          passphrase: document.getElementById('proxy-passphrase').value,
           directConnectAllowed: document.getElementById('proxy-direct-allowed').checked,
         }),
       });
@@ -2089,6 +2204,8 @@
       port:     o.port || '',
       username: o.username || '',
       password: o.password || '',
+      privateKey: o.privateKey || '',
+      passphrase: o.passphrase || '',
     };
   }
 
@@ -2105,6 +2222,7 @@
   function renderOverrideCard(o) {
     const trackers = trackerConfig.length > 0 ? trackerConfig : [];
     const isDirect = o.type === 'direct';
+    const isSsh = o.type === 'ssh';
     const checks = trackers.map(t => `
       <label><input type="checkbox" data-tid="${escapeHtml(t.id)}" ${o.trackers.includes(t.id) ? 'checked' : ''}/> ${escapeHtml(t.name)}</label>
     `).join('');
@@ -2127,6 +2245,7 @@
               <option value="socks4" ${o.type === 'socks4' ? 'selected' : ''}>SOCKS4</option>
               <option value="http"   ${o.type === 'http'   ? 'selected' : ''}>HTTP</option>
               <option value="https"  ${o.type === 'https'  ? 'selected' : ''}>HTTPS</option>
+              <option value="ssh"    ${o.type === 'ssh'    ? 'selected' : ''}>SSH</option>
             </select>
           </div>
           <div>
@@ -2153,6 +2272,16 @@
             <div class="proxy-override-trackers" data-trackers>${checks || '<span style="font-size:12px;color:var(--muted)">Chargement des trackers…</span>'}</div>
           </div>
         </div>
+        <div class="row" data-ssh-row style="${isSsh ? '' : 'display:none'}">
+          <div style="flex:1">
+            <label>Clé privée SSH <span style="color:var(--muted)">(alternative au mot de passe)</span></label>
+            <textarea data-field="privateKey" rows="3" spellcheck="false" style="width:100%; resize:vertical; font-family:monospace; font-size:11px; white-space:pre" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----">${escapeHtml(o.privateKey)}</textarea>
+          </div>
+          <div>
+            <label>Passphrase de la clé <span style="color:var(--muted)">(optionnel)</span></label>
+            <input type="password" data-field="passphrase" value="${escapeHtml(o.passphrase)}" placeholder="—" />
+          </div>
+        </div>
       </div>
     `;
   }
@@ -2173,6 +2302,8 @@
         port:     field('type').value === 'direct' ? '' : field('port').value.trim(),
         username: field('type').value === 'direct' ? '' : field('username').value.trim(),
         password: field('type').value === 'direct' ? '' : field('password').value,
+        privateKey: field('type').value === 'ssh' && field('privateKey') ? field('privateKey').value : '',
+        passphrase: field('type').value === 'ssh' && field('passphrase') ? field('passphrase').value : '',
         trackers,
       };
     });
@@ -2260,6 +2391,8 @@
     loadViewMode();
     await loadPresentationMode();
     await loadProxySettings();
+    await loadBrowserEngine();
+    await loadFastFetch();
     await loadTrackerDefinitionsPanel();
     document.getElementById('grid').innerHTML = renderSkeleton(trackerCount);
     await loadConfig();

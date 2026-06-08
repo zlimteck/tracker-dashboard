@@ -1,10 +1,41 @@
 import fs from 'fs';
 import path from 'path';
 import { chromium, type BrowserContext, type Page } from 'playwright';
-import { resolveProxyForTracker } from './proxy.js';
+import { resolveProxyForTracker, toSshConfig } from './proxy.js';
+import { getSshLocalEndpoint } from './sshTunnel.js';
 import { selectUserAgent } from './userAgent.js';
-import { getTrackerCookie } from './db.js';
+import { getTrackerCookie, getTrackerTotpSecret, getJsonSetting } from './db.js';
+import { generateTotp } from './totp.js';
 import { type TrackerConfig } from './types.js';
+
+// ─── Moteur navigateur : Chromium (defaut) ou CloakBrowser (furtif, opt-in) ─────
+// CloakBrowser est un Chromium patche qui passe mieux les protections anti-bot.
+// Drop-in Playwright : meme API launchPersistentContext / newPage / addCookies.
+// Chargement dynamique + repli automatique sur Chromium si indisponible/echec,
+// pour qu'une install cassee ne bloque jamais l'app.
+interface CloakModule {
+  launchPersistentContext: (opts: Record<string, unknown>) => Promise<BrowserContext>;
+  ensureBinary?: () => Promise<unknown>;
+}
+let cloakModulePromise: Promise<CloakModule | null> | null = null;
+async function loadCloak(): Promise<CloakModule | null> {
+  if (!cloakModulePromise) {
+    cloakModulePromise = (async () => {
+      try {
+        const spec = 'cloakbrowser'; // specifier non litteral -> non resolu a la compilation
+        const mod = await import(spec) as unknown as CloakModule;
+        return mod;
+      } catch (err) {
+        console.error('[CloakBrowser] Module indisponible, repli sur Chromium :', err instanceof Error ? err.message : err);
+        return null;
+      }
+    })();
+  }
+  return cloakModulePromise;
+}
+function cloakEnabled(): boolean {
+  return getJsonSetting('browser_engine', 'chromium' as string) === 'cloak';
+}
 
 // Cookie minimal : on garde juste name+value (+ flags), et on injecte via `url`
 // (Playwright derive domaine/chemin) -> bien plus robuste que domain/path manuels.
@@ -214,6 +245,20 @@ function parseCookies(raw: string): ParsedCookie[] {
   return parseCookieHeader(trimmed);
 }
 
+/**
+ * Construit l'en-tete "Cookie: name=value; ..." a partir du cookie stocke pour ce
+ * tracker (tous formats supportes). Vide si aucun cookie. Utilise par le fast-path
+ * curl-impersonate pour rejouer la session sans lancer de navigateur.
+ */
+export function buildCookieHeader(trackerId: string): string {
+  const raw = getTrackerCookie(trackerId);
+  if (!raw) return '';
+  return parseCookies(raw)
+    .filter(c => c.name && c.value)
+    .map(c => `${c.name}=${c.value}`)
+    .join('; ');
+}
+
 async function injectStoredCookies(tracker: TrackerConfig, context: BrowserContext): Promise<void> {
   const raw = getTrackerCookie(tracker.id);
   if (!raw) return;
@@ -281,6 +326,14 @@ function isAnubisChallenge(html: string): boolean {
 function playwrightProxy(trackerId: string): { server: string; username?: string; password?: string } | undefined {
   const proxy = resolveProxyForTracker(trackerId);
   if (!proxy.enabled || !proxy.host || !proxy.port) return undefined;
+  // Proxy SSH : on pointe vers le SOCKS5 local du tunnel (etabli par ensureProxyReady
+  // avant le fetch). Sans tunnel pret, on sort sans proxy.
+  if (proxy.type === 'ssh') {
+    const ssh = toSshConfig(proxy);
+    const endpoint = ssh ? getSshLocalEndpoint(ssh) : null;
+    if (!endpoint) return undefined;
+    return { server: `socks5://${endpoint.host}:${endpoint.port}` };
+  }
   const server = `${proxy.type}://${proxy.host}:${proxy.port}`;
   return {
     server,
@@ -294,16 +347,31 @@ async function getContext(tracker: TrackerConfig): Promise<BrowserContext> {
   if (existing) return existing;
 
   fs.mkdirSync(PROFILE_DIR, { recursive: true });
-  const context = await chromium.launchPersistentContext(
-    path.join(PROFILE_DIR, tracker.id),
-    {
-      headless: true,
-      userAgent: selectUserAgent(),
-      proxy: playwrightProxy(tracker.id),
-      viewport: { width: 1365, height: 900 },
-      locale: 'fr-FR',
-    },
-  );
+  const userDataDir = path.join(PROFILE_DIR, tracker.id);
+  const launchOptions = {
+    headless: true,
+    userAgent: selectUserAgent(),
+    proxy: playwrightProxy(tracker.id),
+    viewport: { width: 1365, height: 900 },
+    locale: 'fr-FR',
+  };
+
+  let context: BrowserContext | null = null;
+  if (cloakEnabled()) {
+    const cloak = await loadCloak();
+    if (cloak) {
+      try {
+        context = await cloak.launchPersistentContext({ userDataDir, ...launchOptions });
+        console.log(`[CloakBrowser] Contexte furtif lance pour ${tracker.id}`);
+      } catch (err) {
+        console.error(`[CloakBrowser] Echec lancement (${tracker.id}), repli Chromium :`, err instanceof Error ? err.message : err);
+        context = null;
+      }
+    }
+  }
+  if (!context) {
+    context = await chromium.launchPersistentContext(userDataDir, launchOptions);
+  }
   await injectStoredCookies(tracker, context);
   contexts.set(tracker.id, context);
   return context;
@@ -534,6 +602,35 @@ async function ensureLoggedIn(
       }
       await target.fill(value, { timeout: 5000 });
       break;
+    }
+  }
+
+  // 2FA : si un secret TOTP est enregistre, on remplit le champ du code avant submit.
+  const totpSecret = getTrackerTotpSecret(tracker.id);
+  if (totpSecret) {
+    const code = generateTotp(totpSecret);
+    if (code) {
+      const otpCandidates = [
+        tracker.login.otpField ? `[name="${tracker.login.otpField}"]` : '',
+        'input[name="two_step_code"]', // UNIT3D
+        'input[name="code"]',
+        'input[name="otp"]',
+        'input[name="totp"]',
+        'input[name="mfa"]',
+        'input[name="token"]',
+        'input[autocomplete="one-time-code"]',
+        'input[inputmode="numeric"]',
+      ].filter(Boolean);
+      for (const selector of otpCandidates) {
+        const input = page.locator(selector);
+        if (await input.count() === 0) continue;
+        const target = input.first();
+        const type = ((await target.getAttribute('type')) ?? 'text').toLowerCase();
+        if (type === 'hidden') continue;
+        if (!(await target.isVisible().catch(() => false))) continue;
+        await target.fill(code, { timeout: 5000 }).catch(() => {});
+        break;
+      }
     }
   }
 
