@@ -907,6 +907,7 @@
       border-radius: 8px; padding: 7px 16px; font-size: 13px; cursor: pointer;
     }
     .btn-test:hover { border-color: var(--blue); }
+    .btn-test.active { border-color: var(--blue); color: var(--blue); }
     #proxy-test-result { font-size: 13px; margin-left: 8px; }
 
     .toggle-switch {
@@ -1331,6 +1332,7 @@
       <summary>Trackers</summary>
       <div style="margin:0 0 10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap">
         <button class="btn-test" onclick="refreshLogos()">Rafraîchir les logos</button>
+        <button class="btn-test" id="tracker-sort-btn" onclick="toggleTrackerDefinitionsSort()">Trier par statut</button>
         <span id="logos-result" style="font-size:12px; color:var(--muted)"></span>
         <span style="font-size:12px; color:var(--muted)" title="Extensions pour exporter les cookies de session (format cookies.txt)">
           Export cookies :
@@ -2965,6 +2967,7 @@
   let trackerCount = 4; // mise à jour dès que /api/config répond
   let trackerConfig = [];
   let presentationMode = false;
+  let trackerDefinitionsSort = 'name';
 
   function escapeHtml(value) {
     return String(value ?? '')
@@ -2978,6 +2981,13 @@
   function renderSchedulePanel(trackers) {
     const panel = document.getElementById('schedule-panel');
     panel.innerHTML = '';
+  }
+
+  function toggleTrackerDefinitionsSort() {
+    trackerDefinitionsSort = trackerDefinitionsSort === 'configured' ? 'name' : 'configured';
+    const btn = document.getElementById('tracker-sort-btn');
+    if (btn) btn.classList.toggle('active', trackerDefinitionsSort === 'configured');
+    loadTrackerDefinitionsPanel();
   }
 
   async function loadCredentialsPanel() {
@@ -3005,6 +3015,14 @@
         return;
       }
 
+      const sorted = [...definitions];
+      if (trackerDefinitionsSort === 'configured') {
+        sorted.sort((a, b) => {
+          if (a.enabled !== b.enabled) return b.enabled - a.enabled;
+          return a.name.localeCompare(b.name);
+        });
+      }
+
       const notice = newDefinitions.length
         ? `<div class="definition-notice">
             <strong>${newDefinitions.length} nouveau(x) tracker(s) détecté(s)</strong>
@@ -3015,7 +3033,7 @@
       list.innerHTML = `
         ${notice}
         <div class="definition-list">
-          ${definitions.map(definition => {
+          ${sorted.map(definition => {
             const isNew = newDefinitions.some(item => item.id === definition.id);
             const isEnabled = Boolean(definition.enabled);
             const credential = credentials.get(definition.id) || {};
