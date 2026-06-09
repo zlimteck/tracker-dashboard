@@ -1778,10 +1778,24 @@ function responsePreview(value: unknown): string {
   return String(text || '').replace(/\s+/g, ' ').slice(0, 160);
 }
 
+function qbitHttpError(endpoint: string, status: number, data: unknown, authState: 'none' | 'attempted' | 'authenticated'): Error {
+  const preview = responsePreview(data);
+  const authHint = authState === 'authenticated'
+    ? 'auth effectuee, verifier droits WebUI, Host header / reverse proxy ou IP bannie'
+    : (authState === 'attempted'
+      ? 'identifiants envoyes mais refuses par qBittorrent, verifier username/password WebUI ou IP bannie'
+      : 'aucun identifiant envoye, renseigner utilisateur/mot de passe WebUI qBittorrent');
+  return new Error(`qBittorrent ${endpoint} HTTP ${status}${preview ? ` - ${preview}` : ''} (${authHint})`);
+}
+
 async function fetchQbitClient(client: BetaQbitClient): Promise<QbitTrackerAggregate[]> {
   const jar: string[] = [];
   const baseUrl = client.baseUrl.replace(/\/+$/, '');
+  let authenticated = false;
   betaLog(`${betaClientLogName(client)}: scan qBittorrent sur ${baseUrl}`);
+  if (!client.username && !client.password) {
+    betaWarn(`${betaClientLogName(client)}: aucun identifiant qBittorrent configure; l'API peut repondre 403 meme si VueTorrent est connecte dans le navigateur`);
+  }
   if (client.username || client.password) {
     betaLog(`${betaClientLogName(client)}: authentification qBittorrent`);
     const login = await axios.post(
@@ -1797,8 +1811,9 @@ async function fetchQbitClient(client: BetaQbitClient): Promise<QbitTrackerAggre
     if (Array.isArray(cookie)) jar.push(...cookie.map(item => item.split(';')[0]));
     betaLog(`${betaClientLogName(client)}: auth HTTP ${login.status}, cookie(s) ${jar.length}, reponse "${String(login.data).trim().slice(0, 40)}"`);
     if (login.status >= 400 || String(login.data).trim() !== 'Ok.') {
-      throw new Error(`Login qBittorrent refuse (${login.status})`);
+      throw qbitHttpError('/api/v2/auth/login', login.status, login.data, 'attempted');
     }
+    authenticated = true;
   }
 
   try {
@@ -1819,7 +1834,7 @@ async function fetchQbitClient(client: BetaQbitClient): Promise<QbitTrackerAggre
     validateStatus: () => true,
   });
   if (response.status >= 400) {
-    throw new Error(`qBittorrent /api/v2/torrents/info HTTP ${response.status}`);
+    throw qbitHttpError('/api/v2/torrents/info', response.status, response.data, authenticated ? 'authenticated' : 'none');
   }
   if (!Array.isArray(response.data)) {
     betaWarn(`${betaClientLogName(client)}: /torrents/info reponse non attendue: ${responsePreview(response.data)}`);
