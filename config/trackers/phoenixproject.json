@@ -1,0 +1,41 @@
+{
+  "id": "phoenixproject",
+  "name": "Phoenix Project",
+  "baseUrl": "https://phoenixproject.app",
+  "enabled": false,
+  "login": {
+    "url": "login.php",
+    "method": "POST",
+    "contentType": "form",
+    "body": {
+      "username": "{{username}}",
+      "password": "{{password}}"
+    },
+    "failurePatterns": ["login.php", "This is a mirage"],
+    "cookieOnly": true
+  },
+  "fetch": {
+    "url": "index.php",
+    "mode": "browser",
+    "responseType": "html",
+    "fields": {
+      "uploadedBytes": {
+        "regex": "stats_seeding[\\s\\S]{0,200}?title=\"(?<value>[\\d.]+ (?:TiB|GiB|MiB|KiB))\"",
+        "transform": "bytes"
+      },
+      "downloadedBytes": {
+        "regex": "stats_leeching[\\s\\S]{0,200}?title=\"(?<value>[\\d.]+ (?:TiB|GiB|MiB|KiB))\"",
+        "transform": "bytes"
+      },
+      "ratio": {
+        "regex": "stats_ratio[\\s\\S]{0,200}?title=\"(?<value>[\\d.]+)\"",
+        "transform": "number"
+      },
+      "seedBonus": {
+        "regex": "nav_bonus[\\s\\S]{0,200}?Bonus \\((?<value>[\\d,]+)\\)",
+        "transform": "string"
+      }
+    }
+  },
+  "dashboard": { "byteUnit": "binary" }
+}
