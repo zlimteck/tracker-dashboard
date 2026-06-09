@@ -4,12 +4,14 @@
 
 > **Tu l'utilises ? Tu l'aimes ? [⭐ Mets une étoile !](https://github.com/Aerya/tracker-dashboard/stargazers)** — ça prend deux secondes.
 
+> Besoin uniquement d'un outil avec WebUI pour faire du login automatique sur les sites et garder les comptes actifs ? Regardez aussi [Gusdezup/Autovisit-Web](https://github.com/Gusdezup/Autovisit-Web) de Zup.
+
 > [!WARNING]
 > Lors d’un rafraîchissement général ou du premier lancement, certains trackers peuvent temporairement afficher une erreur ou prendre du temps à se mettre à jour.
 >
 > Si besoin, lancez une mise à jour individuelle du tracker concerné.
 >
-> Un goulot d’étranglement existe actuellement au niveau du navigateur headless intégré. Ce point sera retravaillé dans une prochaine version (ou pas).
+> Les lectures reposant sur le navigateur headless restent plus lourdes que les lectures HTTP classiques. L'application limite donc la concurrence, applique un timeout par tracker et utilise le cache au démarrage ainsi que curl-impersonate quand c'est possible.
 
 
 
