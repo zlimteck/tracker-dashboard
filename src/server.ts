@@ -1750,10 +1750,40 @@ function betaTrackerIdForAnnounceHost(announceHost: string, trackerHosts: Map<st
   return best && best.score >= 45 ? best.tracker.id : null;
 }
 
+function betaClientLogName(client: BetaQbitClient): string {
+  return `${client.label || client.id || 'Client BitTorrent'} (${client.type === 'rutorrent' ? 'ruTorrent/rTorrent' : 'qBittorrent'})`;
+}
+
+function betaLog(message: string): void {
+  console.log(`[Beta BitTorrent] ${message}`);
+}
+
+function betaWarn(message: string): void {
+  console.warn(`[Beta BitTorrent] ${message}`);
+}
+
+function redactedAnnounceForLog(value: string): string {
+  const host = trackerHost(value);
+  if (host === 'unknown') return 'unknown';
+  try {
+    const url = new URL(value);
+    return `${url.protocol}//${host}${url.pathname ? url.pathname.replace(/\/[^/]{8,}(?=\/|$)/g, '/***') : ''}`;
+  } catch {
+    return host;
+  }
+}
+
+function responsePreview(value: unknown): string {
+  const text = typeof value === 'string' ? value : JSON.stringify(value);
+  return String(text || '').replace(/\s+/g, ' ').slice(0, 160);
+}
+
 async function fetchQbitClient(client: BetaQbitClient): Promise<QbitTrackerAggregate[]> {
   const jar: string[] = [];
   const baseUrl = client.baseUrl.replace(/\/+$/, '');
+  betaLog(`${betaClientLogName(client)}: scan qBittorrent sur ${baseUrl}`);
   if (client.username || client.password) {
+    betaLog(`${betaClientLogName(client)}: authentification qBittorrent`);
     const login = await axios.post(
       `${baseUrl}/api/v2/auth/login`,
       new URLSearchParams({ username: client.username ?? '', password: client.password ?? '' }).toString(),
@@ -1765,58 +1795,102 @@ async function fetchQbitClient(client: BetaQbitClient): Promise<QbitTrackerAggre
     );
     const cookie = login.headers['set-cookie'];
     if (Array.isArray(cookie)) jar.push(...cookie.map(item => item.split(';')[0]));
+    betaLog(`${betaClientLogName(client)}: auth HTTP ${login.status}, cookie(s) ${jar.length}, reponse "${String(login.data).trim().slice(0, 40)}"`);
     if (login.status >= 400 || String(login.data).trim() !== 'Ok.') {
       throw new Error(`Login qBittorrent refuse (${login.status})`);
     }
+  }
+
+  try {
+    const versionResponse = await axios.get(`${baseUrl}/api/v2/app/version`, {
+      timeout: 6000,
+      headers: jar.length ? { Cookie: jar.join('; ') } : undefined,
+      validateStatus: () => true,
+    });
+    betaLog(`${betaClientLogName(client)}: app/version HTTP ${versionResponse.status}, version "${responsePreview(versionResponse.data)}"`);
+  } catch (err: unknown) {
+    betaWarn(`${betaClientLogName(client)}: app/version KO - ${err instanceof Error ? err.message : String(err)}`);
   }
 
   const response = await axios.get(`${baseUrl}/api/v2/torrents/info`, {
     timeout: 12000,
     headers: jar.length ? { Cookie: jar.join('; ') } : undefined,
     params: { filter: 'all' },
+    validateStatus: () => true,
   });
+  if (response.status >= 400) {
+    throw new Error(`qBittorrent /api/v2/torrents/info HTTP ${response.status}`);
+  }
+  if (!Array.isArray(response.data)) {
+    betaWarn(`${betaClientLogName(client)}: /torrents/info reponse non attendue: ${responsePreview(response.data)}`);
+  }
   let torrents = Array.isArray(response.data) ? response.data as Array<Record<string, unknown>> : [];
+  betaLog(`${betaClientLogName(client)}: /torrents/info HTTP ${response.status}, ${torrents.length} torrent(s), type reponse ${Array.isArray(response.data) ? 'array' : typeof response.data}`);
   if (!torrents.length) {
     try {
+      betaLog(`${betaClientLogName(client)}: /torrents/info vide, essai fallback /sync/maindata`);
       const syncResponse = await axios.get(`${baseUrl}/api/v2/sync/maindata`, {
         timeout: 12000,
         headers: jar.length ? { Cookie: jar.join('; ') } : undefined,
         params: { rid: 0 },
+        validateStatus: () => true,
       });
+      if (syncResponse.status >= 400) {
+        betaWarn(`${betaClientLogName(client)}: /sync/maindata HTTP ${syncResponse.status}`);
+      }
       const syncTorrents = (syncResponse.data as { torrents?: Record<string, Record<string, unknown>> })?.torrents;
+      if (!syncTorrents || typeof syncTorrents !== 'object') {
+        betaWarn(`${betaClientLogName(client)}: /sync/maindata sans objet torrents, apercu: ${responsePreview(syncResponse.data)}`);
+      }
       torrents = syncTorrents && typeof syncTorrents === 'object'
         ? Object.entries(syncTorrents).map(([hash, torrent]) => ({ hash, ...torrent }))
         : torrents;
-    } catch {
+      betaLog(`${betaClientLogName(client)}: /sync/maindata HTTP ${syncResponse.status}, ${torrents.length} torrent(s)`);
+    } catch (err: unknown) {
+      betaWarn(`${betaClientLogName(client)}: fallback /sync/maindata KO - ${err instanceof Error ? err.message : String(err)}`);
       // Keep the regular torrents/info result when sync/maindata is unavailable.
     }
   }
   const groups = new Map<string, QbitTrackerAggregate>();
   const headers = jar.length ? { Cookie: jar.join('; ') } : undefined;
+  let missingAnnounce = 0;
+  let trackerDetailCalls = 0;
+  let unknownSkipped = 0;
   for (const torrent of torrents) {
     let announce = String(torrent.tracker || '');
     if (!announce || trackerHost(announce) === 'unknown') {
+      missingAnnounce += 1;
       const hash = String(torrent.hash || '');
       if (hash) {
         try {
+          trackerDetailCalls += 1;
           const trackersResponse = await axios.get(`${baseUrl}/api/v2/torrents/trackers`, {
             timeout: 6000,
             headers,
             params: { hash },
+            validateStatus: () => true,
           });
+          if (trackersResponse.status >= 400) {
+            betaWarn(`${betaClientLogName(client)}: trackers detail HTTP ${trackersResponse.status} pour ${String(torrent.name || hash).slice(0, 80)}`);
+            continue;
+          }
           const trackers = Array.isArray(trackersResponse.data) ? trackersResponse.data as Array<Record<string, unknown>> : [];
           const preferred = trackers.find(item => {
             const url = String(item.url || '');
             return /^https?:\/\//i.test(url);
           });
           announce = String(preferred?.url || trackers[0]?.url || '');
-        } catch {
+        } catch (err: unknown) {
+          betaWarn(`${betaClientLogName(client)}: trackers detail KO pour ${String(torrent.name || hash).slice(0, 80)} - ${err instanceof Error ? err.message : String(err)}`);
           // Best effort: qBittorrent peut refuser le detail trackers selon permissions/version.
         }
       }
     }
     const host = trackerHost(announce || String(torrent.magnet_uri || 'unknown'));
-    if (host === 'unknown') continue;
+    if (host === 'unknown') {
+      unknownSkipped += 1;
+      continue;
+    }
     const existing = groups.get(host) ?? {
       clientId: client.id,
       clientLabel: client.label,
@@ -1852,12 +1926,23 @@ async function fetchQbitClient(client: BetaQbitClient): Promise<QbitTrackerAggre
     });
     groups.set(host, existing);
   }
+  if (missingAnnounce || trackerDetailCalls || unknownSkipped) {
+    betaLog(`${betaClientLogName(client)}: annonces absentes dans torrents/info ${missingAnnounce}, appels detail trackers ${trackerDetailCalls}, torrents sans hote ${unknownSkipped}`);
+  }
   for (const item of groups.values()) {
     item.ratio = item.downloadedBytes > 0
       ? item.uploadedBytes / item.downloadedBytes
       : (item.uploadedBytes > 0 ? Number.POSITIVE_INFINITY : 0);
   }
-  return [...groups.values()].sort((a, b) => a.trackerHost.localeCompare(b.trackerHost));
+  const result = [...groups.values()].sort((a, b) => a.trackerHost.localeCompare(b.trackerHost));
+  betaLog(`${betaClientLogName(client)}: ${result.reduce((sum, item) => sum + item.torrentCount, 0)} torrent(s), ${result.length} hote(s) d'annonce${result.length ? `: ${result.map(item => `${item.trackerHost}=${item.torrentCount}`).join(', ')}` : ''}`);
+  if (!result.length && torrents.length > 0) {
+    betaWarn(`${betaClientLogName(client)}: ${torrents.length} torrent(s) recus mais aucun hote d'annonce exploitable`);
+  }
+  if (!torrents.length) {
+    betaWarn(`${betaClientLogName(client)}: aucun torrent recupere depuis l'API qBittorrent. Verifier URL API, identifiants, instance cible et droits WebUI.`);
+  }
+  return result;
 }
 
 function xmlRpcValue(value: string): string {
@@ -1889,6 +1974,7 @@ function parseXmlRpcScalars(xml: string): string[] {
 }
 
 async function fetchRutorrentClient(client: BetaQbitClient): Promise<QbitTrackerAggregate[]> {
+  betaLog(`${betaClientLogName(client)}: scan ruTorrent/rTorrent sur ${client.baseUrl.replace(/\/+$/, '')}`);
   await rtorrentRpc(client, 'download_list', ['main']);
   const xml = await rtorrentRpc(client, 'd.multicall2', [
     '',
@@ -1903,17 +1989,24 @@ async function fetchRutorrentClient(client: BetaQbitClient): Promise<QbitTracker
     'd.complete=',
   ]);
   const scalars = parseXmlRpcScalars(xml);
+  betaLog(`${betaClientLogName(client)}: d.multicall2 a retourne ${scalars.length} valeur(s), ${Math.floor(scalars.length / 8)} torrent(s) potentiel(s)`);
   const groups = new Map<string, QbitTrackerAggregate>();
+  let trackerDetailCalls = 0;
+  let unknownSkipped = 0;
   for (let i = 0; i + 7 < scalars.length; i += 8) {
     const [hash, name, stateRaw, sizeRaw, upRaw, downRaw, ratioRaw, completeRaw] = scalars.slice(i, i + 8);
     let announce = '';
     try {
+      trackerDetailCalls += 1;
       const trackersXml = await rtorrentRpc(client, 't.multicall', [hash, '', 't.url=']);
       announce = parseXmlRpcScalars(trackersXml).find(value => /^https?:\/\//i.test(value)) || '';
-    } catch {
+      betaLog(`${betaClientLogName(client)}: ${name.slice(0, 80)} -> ${redactedAnnounceForLog(announce)}`);
+    } catch (err: unknown) {
+      betaWarn(`${betaClientLogName(client)}: t.multicall KO pour ${name.slice(0, 80)} - ${err instanceof Error ? err.message : String(err)}`);
       // Some ruTorrent/rTorrent setups disable tracker multicalls; keep torrent under unknown.
     }
     const host = trackerHost(announce);
+    if (host === 'unknown') unknownSkipped += 1;
     const up = Number(upRaw) || 0;
     const down = Number(downRaw) || 0;
     const complete = completeRaw === '1';
@@ -1949,12 +2042,17 @@ async function fetchRutorrentClient(client: BetaQbitClient): Promise<QbitTracker
     });
     groups.set(host, existing);
   }
+  if (trackerDetailCalls || unknownSkipped) {
+    betaLog(`${betaClientLogName(client)}: appels detail trackers ${trackerDetailCalls}, torrents sans hote ${unknownSkipped}`);
+  }
   for (const item of groups.values()) {
     item.ratio = item.downloadedBytes > 0
       ? item.uploadedBytes / item.downloadedBytes
       : (item.uploadedBytes > 0 ? Number.POSITIVE_INFINITY : 0);
   }
-  return [...groups.values()].sort((a, b) => a.trackerHost.localeCompare(b.trackerHost));
+  const result = [...groups.values()].sort((a, b) => a.trackerHost.localeCompare(b.trackerHost));
+  betaLog(`${betaClientLogName(client)}: ${result.reduce((sum, item) => sum + item.torrentCount, 0)} torrent(s), ${result.length} hote(s) d'annonce${result.length ? `: ${result.map(item => `${item.trackerHost}=${item.torrentCount}`).join(', ')}` : ''}`);
+  return result;
 }
 
 async function fetchTorrentClient(client: BetaQbitClient): Promise<QbitTrackerAggregate[]> {
@@ -1963,12 +2061,35 @@ async function fetchTorrentClient(client: BetaQbitClient): Promise<QbitTrackerAg
 
 async function refreshBetaQbitStats(settings = loadBetaSettings()): Promise<QbitTrackerAggregate[]> {
   const enabled = settings.qbitClients.filter(client => client.enabled);
+  betaLog(`refresh demande: ${settings.qbitClients.length} client(s) configure(s), ${enabled.length} actif(s)`);
+  if (!enabled.length) {
+    betaWarn('aucun client BitTorrent actif dans la configuration beta');
+  }
   const results: QbitTrackerAggregate[] = [];
+  const errors: string[] = [];
   for (const client of enabled) {
-    results.push(...await fetchTorrentClient(client));
+    try {
+      const clientResults = await fetchTorrentClient(client);
+      results.push(...clientResults);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      errors.push(`${betaClientLogName(client)}: ${message}`);
+      betaWarn(`${betaClientLogName(client)}: scan KO - ${message}`);
+    }
+  }
+  if (errors.length && !results.length) {
+    throw new Error(`Scan BitTorrent KO: ${errors.join(' | ')}`);
+  }
+  if (errors.length) {
+    betaWarn(`scan partiel: ${errors.length} client(s) en erreur`);
   }
   betaQbitStats = results;
   betaQbitLastRefresh = new Date().toISOString();
+  const torrentCount = results.reduce((sum, item) => sum + item.torrentCount, 0);
+  betaLog(`refresh termine: ${torrentCount} torrent(s), ${results.length} hote(s) d'annonce`);
+  if (enabled.length > 0 && torrentCount === 0) {
+    throw new Error('Aucun torrent recupere depuis les clients BitTorrent actifs. Les logs [Beta BitTorrent] indiquent quel endpoint repond vide ou invalide.');
+  }
   return results;
 }
 
@@ -2178,6 +2299,7 @@ export async function start(): Promise<void> {
   app.post('/api/beta/settings', (req, res) => {
     try {
       const settings = saveBetaSettingsPayload(req.body);
+      console.log(`[Beta BitTorrent] configuration sauvegardee: ${settings.qbitClients.length} client(s), ${settings.qbitClients.filter(client => client.enabled).length} actif(s), ${settings.announceMappings.length} liaison(s) annonce`);
       res.json({ ok: true, settings: sanitizeBetaSettings(settings) });
     } catch (err: unknown) {
       res.status(400).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
@@ -2197,18 +2319,23 @@ export async function start(): Promise<void> {
         password: raw.password === '••••••••' ? (current?.password ?? '') : (raw.password ?? ''),
         enabled: true,
       };
+      betaLog(`test client demande pour ${betaClientLogName(client)}`);
       const stats = await fetchTorrentClient(client);
       res.json({ ok: true, trackerCount: stats.length, torrentCount: stats.reduce((sum, item) => sum + item.torrentCount, 0) });
     } catch (err: unknown) {
+      betaWarn(`test client KO - ${err instanceof Error ? err.message : String(err)}`);
       res.json({ ok: false, error: err instanceof Error ? err.message : String(err) });
     }
   });
 
   app.post('/api/beta/qbit/refresh', async (_req, res) => {
     try {
+      betaLog('endpoint /api/beta/qbit/refresh appele');
       const stats = await refreshBetaQbitStats();
+      betaLog(`endpoint refresh OK: ${stats.reduce((sum, item) => sum + item.torrentCount, 0)} torrent(s), ${stats.length} hote(s)`);
       res.json({ ok: true, stats, lastRefresh: betaQbitLastRefresh });
     } catch (err: unknown) {
+      betaWarn(`endpoint refresh KO - ${err instanceof Error ? err.message : String(err)}`);
       res.status(502).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
     }
   });
