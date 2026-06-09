@@ -513,6 +513,83 @@
       overflow-wrap: anywhere;
       text-align: right;
     }
+    .beta-table-wrap {
+      overflow-x: auto;
+    }
+    .beta-compact-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 12px;
+      min-width: 980px;
+    }
+    .beta-compact-table th,
+    .beta-compact-table td {
+      padding: 8px 9px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      white-space: nowrap;
+    }
+    .beta-compact-table th {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .3px;
+      background: color-mix(in srgb, var(--panel) 88%, var(--bg));
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      cursor: pointer;
+      user-select: none;
+    }
+    .beta-compact-table th:hover { color: var(--text); }
+    .beta-compact-table .num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .beta-compact-table tbody tr {
+      border-left: 3px solid transparent;
+    }
+    .beta-compact-table tbody tr.ok td:first-child { border-left: 3px solid var(--green); }
+    .beta-compact-table tbody tr.warn td:first-child { border-left: 3px solid var(--yellow); }
+    .beta-compact-table tbody tr.bad td:first-child { border-left: 3px solid var(--red); }
+    .beta-compact-table tbody tr:hover { background: color-mix(in srgb, var(--blue) 6%, transparent); }
+    .beta-compact-table a {
+      color: var(--text);
+      font-weight: 700;
+      text-decoration: none;
+    }
+    .beta-compact-table a:hover { color: var(--blue); }
+    .beta-table-actions {
+      display: flex;
+      gap: 6px;
+      justify-content: flex-end;
+    }
+    .beta-focus-list {
+      display: grid;
+      gap: 8px;
+    }
+    .beta-focus-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--red);
+      border-radius: 8px;
+      padding: 10px;
+      background: color-mix(in srgb, var(--bg) 70%, transparent);
+    }
+    .beta-focus-item.warn { border-left-color: var(--yellow); }
+    .beta-focus-item strong { display: block; font-size: 13px; }
+    .beta-focus-item span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+      margin-top: 2px;
+    }
     .beta-form-row {
       display: grid;
       grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
@@ -1424,6 +1501,8 @@
     </div>
     <div class="beta-section-tabs" aria-label="Sections bêta">
       <button id="beta-section-overview" class="active" onclick="setBetaSection('overview')" type="button">Fiche de tracker</button>
+      <button id="beta-section-table" onclick="setBetaSection('table')" type="button">Tableau compact</button>
+      <button id="beta-section-incidents" onclick="setBetaSection('incidents')" type="button">Focus incidents</button>
       <button id="beta-section-graphs" onclick="setBetaSection('graphs')" type="button">Graphiques</button>
       <button id="beta-section-qbit" onclick="setBetaSection('qbit')" type="button">Clients BitTorrent</button>
       <button id="beta-section-alerts" onclick="setBetaSection('alerts')" type="button">Alertes</button>
@@ -1454,6 +1533,20 @@
             <div id="beta-operation-status"></div>
           </section>
         </div>
+        </section>
+        <section class="beta-section" data-beta-section="table">
+        <section class="beta-panel">
+          <h3>Tableau compact</h3>
+          <div class="beta-note" style="margin-bottom:10px">Tri par colonne, lignes colorées par état, actions rapides et valeurs alignées pour comparer les trackers actifs.</div>
+          <div id="beta-compact-table"></div>
+        </section>
+        </section>
+        <section class="beta-section" data-beta-section="incidents">
+        <section class="beta-panel">
+          <h3>Focus incidents</h3>
+          <div class="beta-note" style="margin-bottom:10px">Trackers en erreur, données anciennes, captcha, cookie-only ou site difficile à joindre.</div>
+          <div id="beta-focus-incidents"></div>
+        </section>
         </section>
         <section class="beta-section" data-beta-section="graphs">
         <div class="beta-stack">
@@ -1887,6 +1980,7 @@
   let betaHistory = [];
   let betaSelectedTrackerId = null;
   let betaSelectedCalendarDay = new Date().toISOString().slice(0, 10);
+  let betaTableSort = { key: 'name', dir: 'asc' };
 
   function getActiveGrid() {
     return document.getElementById(activeTab === 'beta' ? 'beta-grid' : 'grid');
@@ -1985,6 +2079,142 @@
   function selectBetaTracker(trackerId) {
     betaSelectedTrackerId = trackerId;
     renderBetaLab();
+  }
+
+  function betaTrackerUrl(stat) {
+    return stat.trackerUrl || trackerConfig.find(t => t.id === stat.id)?.baseUrl || '';
+  }
+
+  function betaStatusClass(stat) {
+    if (stat.status === 'error') return 'bad';
+    if (stat.stale) return 'warn';
+    return 'ok';
+  }
+
+  function betaSortValue(stat, key) {
+    const fields = stat.fields || {};
+    if (key === 'status') return stat.status === 'error' ? 2 : (stat.stale ? 1 : 0);
+    if (key === 'updated') return Date.parse(stat.lastLoginAt || stat.lastUpdated || '') || 0;
+    if (key === 'downloaded') return Number(fields.downloadedBytes || 0);
+    if (key === 'uploaded') return Number(fields.uploadedBytes || 0);
+    if (key === 'ratio') return Number(computedRatio(fields) || 0);
+    if (key === 'buffer') return Number(fields.bufferBytes ?? fields.buffer ?? 0);
+    if (key === 'seed') return Number(fields.seeding ?? fields.seedTimeDays ?? fields.seedTime ?? 0);
+    if (key === 'bonus') return Number(fields.seedBonus ?? fields.points ?? 0);
+    return String(stat.name || stat.id || '').toLowerCase();
+  }
+
+  function setBetaTableSort(key) {
+    if (betaTableSort.key === key) {
+      betaTableSort.dir = betaTableSort.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      betaTableSort = { key, dir: key === 'name' ? 'asc' : 'desc' };
+    }
+    renderBetaCompactTable();
+  }
+
+  function betaSortedStats(stats = latestSortedStats) {
+    const dir = betaTableSort.dir === 'asc' ? 1 : -1;
+    return [...stats].sort((a, b) => {
+      const av = betaSortValue(a, betaTableSort.key);
+      const bv = betaSortValue(b, betaTableSort.key);
+      if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
+      return String(av).localeCompare(String(bv), 'fr', { sensitivity: 'base' }) * dir;
+    });
+  }
+
+  function betaSortLabel(key, label) {
+    if (betaTableSort.key !== key) return label;
+    return `${label} ${betaTableSort.dir === 'asc' ? '▲' : '▼'}`;
+  }
+
+  function renderBetaCompactTable() {
+    const container = document.getElementById('beta-compact-table');
+    if (!container) return;
+    const rows = betaSortedStats(betaStats());
+    const head = [
+      ['name', 'Tracker'],
+      ['status', 'Statut'],
+      ['updated', 'Dernier refresh'],
+      ['downloaded', 'DL'],
+      ['uploaded', 'UP'],
+      ['ratio', 'Ratio'],
+      ['buffer', 'Buffer'],
+      ['seed', 'Seed'],
+      ['bonus', 'Bonus'],
+    ].map(([key, label]) => `<th onclick="setBetaTableSort('${key}')">${escapeHtml(betaSortLabel(key, label))}</th>`).join('');
+    container.innerHTML = `
+      <div class="beta-table-wrap">
+        <table class="beta-compact-table">
+          <thead><tr>${head}<th class="num">Actions</th></tr></thead>
+          <tbody>${rows.map(stat => {
+            const fields = stat.fields || {};
+            const ratio = computedRatio(fields);
+            const byteUnit = statByteUnit(stat);
+            const url = betaTrackerPageUrl(stat.id);
+            const statusText = stat.status === 'error' ? 'Erreur' : (stat.stale ? 'Données anciennes' : 'OK');
+            const buffer = bufferText(fields, byteUnit);
+            const bonusRaw = hasStatValue(fields.seedBonus) ? fields.seedBonus : fields.points;
+            return `
+              <tr class="${betaStatusClass(stat)}">
+                <td><a href="${escapeHtml(url)}" target="_blank" rel="noreferrer noopener">${escapeHtml(stat.name)}</a></td>
+                <td>${rowStatusBadges(stat)}</td>
+                <td class="cell-muted">${formatDateTime(stat.lastLoginAt || stat.lastUpdated)}</td>
+                <td class="num">${bytesText(fields.downloadedBytes, byteUnit)}</td>
+                <td class="num">${bytesText(fields.uploadedBytes, byteUnit)}</td>
+                <td class="num"><span class="${ratioClass(ratio)}">${hasStatValue(ratio) ? formatRatio(ratio) : '-'}</span></td>
+                <td class="num"><span class="${bufferClass(formatBuffer(fields, byteUnit))}">${buffer}</span></td>
+                <td class="num">${formatCount(fields.seeding ?? fields.seedTimeDays ?? fields.seedTime)}</td>
+                <td class="num">${formatCount(bonusRaw)}</td>
+                <td>
+                  <div class="beta-table-actions">
+                    <button class="beta-icon-btn" onclick="selectBetaTracker('${escapeHtml(stat.id)}'); setBetaSection('overview')" type="button">Fiche</button>
+                    <button class="beta-icon-btn" onclick="refreshTracker('${escapeHtml(stat.id)}', this)" type="button">MàJ</button>
+                  </div>
+                </td>
+              </tr>`;
+          }).join('') || '<tr><td colspan="10" class="cell-muted">Aucun tracker.</td></tr>'}</tbody>
+        </table>
+      </div>`;
+  }
+
+  function betaIncidentReason(stat, status) {
+    if (stat.stale?.error) return stat.stale.error;
+    if (stat.error) return stat.error;
+    const mode = trackerModeLabel(status);
+    if (mode === 'captcha') return 'Captcha ou protection anti-bot détectée.';
+    if (mode === 'cookie-only') return 'Fonctionnement identifié comme cookie-only.';
+    if (status?.siteReachability?.reachable === false) return formatReachabilityReason(status.siteReachability);
+    return 'A surveiller.';
+  }
+
+  function renderBetaFocusIncidents() {
+    const container = document.getElementById('beta-focus-incidents');
+    if (!container) return;
+    const statuses = new Map((betaOverview?.trackerStatuses || []).map(item => [item.id, item]));
+    const rows = latestSortedStats.filter(stat => {
+      const status = statuses.get(stat.id);
+      const mode = trackerModeLabel(status);
+      return hasTrackerProblem(stat) || mode === 'captcha' || mode === 'cookie-only' || status?.siteReachability?.reachable === false;
+    }).sort((a, b) => betaStatusClass(b).localeCompare(betaStatusClass(a)) || a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
+    container.innerHTML = `<div class="beta-focus-list">${
+      rows.map(stat => {
+        const status = statuses.get(stat.id);
+        const mode = trackerModeLabel(status);
+        const cls = stat.status === 'error' || status?.siteReachability?.reachable === false ? '' : 'warn';
+        return `
+          <div class="beta-focus-item ${cls}">
+            <div>
+              <strong>${escapeHtml(stat.name)}</strong>
+              <span>${escapeHtml(mode)} · ${escapeHtml(betaIncidentReason(stat, status))}</span>
+            </div>
+            <div class="beta-table-actions">
+              <a class="beta-icon-btn" href="${escapeHtml(betaTrackerPageUrl(stat.id))}" target="_blank" rel="noreferrer noopener">Fiche</a>
+              <button class="beta-icon-btn" onclick="refreshTracker('${escapeHtml(stat.id)}', this)" type="button">MàJ</button>
+            </div>
+          </div>`;
+      }).join('') || '<p class="beta-note">Aucun incident détecté.</p>'
+    }</div>`;
   }
 
   function renderBetaComparison() {
@@ -2497,6 +2727,8 @@
     renderBetaTrackerPage();
     renderBetaComparison();
     renderBetaOperationStatus();
+    renderBetaCompactTable();
+    renderBetaFocusIncidents();
     renderBetaCalendar();
     drawBetaGlobalChart();
     drawBetaHistoryChart();
@@ -2714,7 +2946,7 @@
   }
 
   function setBetaSection(section) {
-    betaSection = ['graphs', 'qbit', 'alerts', 'classic'].includes(section) ? section : 'overview';
+    betaSection = ['table', 'incidents', 'graphs', 'qbit', 'alerts', 'classic'].includes(section) ? section : 'overview';
     localStorage.setItem('tracker-dashboard-beta-section', betaSection);
     renderBetaControls();
     renderBetaLab();
