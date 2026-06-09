@@ -1635,7 +1635,7 @@ function saveBetaSettingsPayload(raw: unknown): BetaSettings {
       id,
       type,
       label: String(client.label || (type === 'rutorrent' ? 'ruTorrent' : 'qBittorrent')).trim().slice(0, 80),
-      baseUrl: String(client.baseUrl || '').trim().replace(/\/+$/, ''),
+      baseUrl: cleanClientBaseUrl(String(client.baseUrl || '')),
       username: String(client.username || '').trim(),
       password,
       enabled: client.enabled !== false,
@@ -1778,6 +1778,21 @@ function responsePreview(value: unknown): string {
   return String(text || '').replace(/\s+/g, ' ').slice(0, 160);
 }
 
+function cleanClientBaseUrl(value: string): string {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    const url = new URL(raw);
+    url.hash = '';
+    url.search = '';
+    const pathname = url.pathname.replace(/\/+$/, '');
+    if (/\/api\/v2$/i.test(pathname)) url.pathname = pathname.replace(/\/api\/v2$/i, '') || '/';
+    return url.toString().replace(/\/+$/, '');
+  } catch {
+    return raw.replace(/[#?].*$/, '').replace(/\/api\/v2\/?$/i, '').replace(/\/+$/, '');
+  }
+}
+
 function qbitHttpError(endpoint: string, status: number, data: unknown, authState: 'none' | 'attempted' | 'authenticated'): Error {
   const preview = responsePreview(data);
   const authHint = authState === 'authenticated'
@@ -1790,7 +1805,8 @@ function qbitHttpError(endpoint: string, status: number, data: unknown, authStat
 
 async function fetchQbitClient(client: BetaQbitClient): Promise<QbitTrackerAggregate[]> {
   const jar: string[] = [];
-  const baseUrl = client.baseUrl.replace(/\/+$/, '');
+  const baseUrl = cleanClientBaseUrl(client.baseUrl);
+  const directRequest = { proxy: false as const };
   let authenticated = false;
   betaLog(`${betaClientLogName(client)}: scan qBittorrent sur ${baseUrl}`);
   if (!client.username && !client.password) {
@@ -1805,12 +1821,15 @@ async function fetchQbitClient(client: BetaQbitClient): Promise<QbitTrackerAggre
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         timeout: 8000,
         validateStatus: () => true,
+        ...directRequest,
       },
     );
     const cookie = login.headers['set-cookie'];
     if (Array.isArray(cookie)) jar.push(...cookie.map(item => item.split(';')[0]));
     betaLog(`${betaClientLogName(client)}: auth HTTP ${login.status}, cookie(s) ${jar.length}, reponse "${String(login.data).trim().slice(0, 40)}"`);
-    if (login.status >= 400 || String(login.data).trim() !== 'Ok.') {
+    const loginBody = String(login.data || '').trim();
+    const loginOk = (login.status === 200 && loginBody === 'Ok.') || (login.status === 204 && jar.length > 0);
+    if (!loginOk) {
       throw qbitHttpError('/api/v2/auth/login', login.status, login.data, 'attempted');
     }
     authenticated = true;
@@ -1821,6 +1840,7 @@ async function fetchQbitClient(client: BetaQbitClient): Promise<QbitTrackerAggre
       timeout: 6000,
       headers: jar.length ? { Cookie: jar.join('; ') } : undefined,
       validateStatus: () => true,
+      ...directRequest,
     });
     betaLog(`${betaClientLogName(client)}: app/version HTTP ${versionResponse.status}, version "${responsePreview(versionResponse.data)}"`);
   } catch (err: unknown) {
@@ -1832,6 +1852,7 @@ async function fetchQbitClient(client: BetaQbitClient): Promise<QbitTrackerAggre
     headers: jar.length ? { Cookie: jar.join('; ') } : undefined,
     params: { filter: 'all' },
     validateStatus: () => true,
+    ...directRequest,
   });
   if (response.status >= 400) {
     throw qbitHttpError('/api/v2/torrents/info', response.status, response.data, authenticated ? 'authenticated' : 'none');
@@ -1849,6 +1870,7 @@ async function fetchQbitClient(client: BetaQbitClient): Promise<QbitTrackerAggre
         headers: jar.length ? { Cookie: jar.join('; ') } : undefined,
         params: { rid: 0 },
         validateStatus: () => true,
+        ...directRequest,
       });
       if (syncResponse.status >= 400) {
         betaWarn(`${betaClientLogName(client)}: /sync/maindata HTTP ${syncResponse.status}`);
@@ -1884,6 +1906,7 @@ async function fetchQbitClient(client: BetaQbitClient): Promise<QbitTrackerAggre
             headers,
             params: { hash },
             validateStatus: () => true,
+            ...directRequest,
           });
           if (trackersResponse.status >= 400) {
             betaWarn(`${betaClientLogName(client)}: trackers detail HTTP ${trackersResponse.status} pour ${String(torrent.name || hash).slice(0, 80)}`);
@@ -1966,10 +1989,11 @@ function xmlRpcValue(value: string): string {
 
 async function rtorrentRpc(client: BetaQbitClient, method: string, params: string[] = []): Promise<string> {
   const body = `<?xml version="1.0"?><methodCall><methodName>${method}</methodName><params>${params.map(value => `<param>${xmlRpcValue(value)}</param>`).join('')}</params></methodCall>`;
-  const response = await axios.post(client.baseUrl.replace(/\/+$/, ''), body, {
+  const response = await axios.post(cleanClientBaseUrl(client.baseUrl), body, {
     timeout: 12000,
     auth: client.username || client.password ? { username: client.username ?? '', password: client.password ?? '' } : undefined,
     headers: { 'Content-Type': 'text/xml' },
+    proxy: false,
   });
   return String(response.data || '');
 }
@@ -1989,7 +2013,8 @@ function parseXmlRpcScalars(xml: string): string[] {
 }
 
 async function fetchRutorrentClient(client: BetaQbitClient): Promise<QbitTrackerAggregate[]> {
-  betaLog(`${betaClientLogName(client)}: scan ruTorrent/rTorrent sur ${client.baseUrl.replace(/\/+$/, '')}`);
+  const baseUrl = cleanClientBaseUrl(client.baseUrl);
+  betaLog(`${betaClientLogName(client)}: scan ruTorrent/rTorrent sur ${baseUrl}`);
   await rtorrentRpc(client, 'download_list', ['main']);
   const xml = await rtorrentRpc(client, 'd.multicall2', [
     '',
@@ -2028,7 +2053,7 @@ async function fetchRutorrentClient(client: BetaQbitClient): Promise<QbitTracker
     const existing = groups.get(host) ?? {
       clientId: client.id,
       clientLabel: client.label,
-      clientBaseUrl: client.baseUrl.replace(/\/+$/, ''),
+      clientBaseUrl: baseUrl,
       trackerHost: host,
       torrentCount: 0,
       seedingCount: 0,
@@ -2329,7 +2354,7 @@ export async function start(): Promise<void> {
         id: raw.id || 'test',
         type: raw.type === 'rutorrent' ? 'rutorrent' : 'qbittorrent',
         label: String(raw.label || (raw.type === 'rutorrent' ? 'ruTorrent' : 'qBittorrent')).trim() || 'Client BitTorrent',
-        baseUrl: String(raw.baseUrl || '').trim().replace(/\/+$/, ''),
+        baseUrl: cleanClientBaseUrl(String(raw.baseUrl || '')),
         username: String(raw.username || '').trim(),
         password: raw.password === '••••••••' ? (current?.password ?? '') : (raw.password ?? ''),
         enabled: true,
