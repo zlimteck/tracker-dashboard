@@ -368,6 +368,19 @@
       text-align: left;
       white-space: nowrap;
     }
+    .beta-error-table {
+      table-layout: fixed;
+    }
+    .beta-error-table td {
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      vertical-align: top;
+    }
+    .beta-error-table th:first-child,
+    .beta-error-table td:first-child {
+      width: 132px;
+    }
     .beta-mini-table th { color: var(--muted); font-size: 11px; font-weight: 600; }
     .beta-chart {
       width: 100%;
@@ -442,7 +455,14 @@
       flex-direction: column;
       justify-content: space-between;
       gap: 4px;
+      color: var(--text);
+      cursor: pointer;
+      text-align: left;
+      width: 100%;
+      font: inherit;
     }
+    .beta-day:hover,
+    .beta-day.active { border-color: var(--blue); }
     .beta-day.out { opacity: .36; }
     .beta-day.ok { border-color: color-mix(in srgb, var(--green) 55%, var(--border)); }
     .beta-day.warn { border-color: color-mix(in srgb, var(--yellow) 55%, var(--border)); }
@@ -461,6 +481,38 @@
     }
     .beta-pill.ok { color: var(--green); background: color-mix(in srgb, var(--green) 14%, transparent); }
     .beta-pill.bad { color: var(--red); background: color-mix(in srgb, var(--red) 14%, transparent); }
+    .beta-calendar-detail {
+      margin-top: 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      background: color-mix(in srgb, var(--bg) 72%, transparent);
+    }
+    .beta-calendar-detail h4 {
+      margin: 0 0 8px;
+      font-size: 13px;
+    }
+    .beta-calendar-columns {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .beta-calendar-columns a {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+      text-decoration: none;
+      font-size: 12px;
+    }
+    .beta-calendar-columns a:hover { color: var(--blue); }
+    .beta-calendar-columns span {
+      color: var(--muted);
+      overflow-wrap: anywhere;
+      text-align: right;
+    }
     .beta-form-row {
       display: grid;
       grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
@@ -1193,7 +1245,7 @@
   <img class="header-logo" src="/logo.png" alt="Tracker Dashboard" />
   <nav class="nav-tabs" aria-label="Vues">
     <button id="dashboard-tab" class="tab-button active" onclick="setActiveTab('dashboard')" type="button">Dashboard</button>
-    <button id="beta-tab" class="tab-button" onclick="setActiveTab('beta')" type="button">Beta</button>
+    <button id="beta-tab" class="tab-button" onclick="setActiveTab('beta')" type="button">Bêta</button>
   </nav>
   <div class="header-right">
 
@@ -1360,18 +1412,18 @@
     <div id="beta-summary" class="beta-summary"></div>
     <div class="beta-toolbar">
       <div class="beta-title">
-        <strong>Beta lab</strong>
-        <span>Comparaison trackers, clients BitTorrent, historique et alertes experimentales.</span>
+        <strong>Laboratoire bêta</strong>
+        <span>Comparaison trackers, clients BitTorrent, historique et alertes expérimentales.</span>
       </div>
-      <div class="beta-actions" aria-label="Controles beta">
+      <div class="beta-actions" aria-label="Contrôles bêta">
         <button id="beta-filter-all" class="active" onclick="setBetaFilter('all')" type="button">Tous</button>
-        <button id="beta-filter-problems" onclick="setBetaFilter('problems')" type="button">Problemes</button>
+        <button id="beta-filter-problems" onclick="setBetaFilter('problems')" type="button">Problèmes</button>
         <button id="beta-filter-healthy" onclick="setBetaFilter('healthy')" type="button">OK</button>
-        <button onclick="refreshBetaQbit()" type="button">Sync clients BitTorrent</button>
+        <button id="beta-refresh-clients" onclick="refreshBetaQbit()" type="button">Synchroniser les clients BitTorrent</button>
       </div>
     </div>
-    <div class="beta-section-tabs" aria-label="Sections beta">
-      <button id="beta-section-overview" class="active" onclick="setBetaSection('overview')" type="button">Vue d'ensemble</button>
+    <div class="beta-section-tabs" aria-label="Sections bêta">
+      <button id="beta-section-overview" class="active" onclick="setBetaSection('overview')" type="button">Fiche de tracker</button>
       <button id="beta-section-graphs" onclick="setBetaSection('graphs')" type="button">Graphiques</button>
       <button id="beta-section-qbit" onclick="setBetaSection('qbit')" type="button">Clients BitTorrent</button>
       <button id="beta-section-alerts" onclick="setBetaSection('alerts')" type="button">Alertes</button>
@@ -1389,7 +1441,7 @@
       <div class="beta-stack">
         <section class="beta-section active" data-beta-section="overview">
         <section class="beta-panel" style="margin-bottom:12px">
-          <h3>Fiche tracker</h3>
+          <h3>Fiche de tracker</h3>
           <div id="beta-tracker-page"></div>
         </section>
         <div class="beta-grid-2">
@@ -1414,7 +1466,7 @@
           <div id="beta-global-chart" class="beta-chart"></div>
         </section>
         <section class="beta-panel">
-          <h3>Evolution globale et tracker selectionne</h3>
+          <h3>Évolution globale et tracker sélectionné</h3>
           <div id="beta-history-chart" class="beta-chart"></div>
         </section>
         <section class="beta-panel">
@@ -1425,6 +1477,7 @@
             <button class="beta-icon-btn" onclick="shiftBetaCalendar(1)" type="button">Mois suivant</button>
           </div>
           <div id="beta-calendar" class="beta-calendar"></div>
+          <div id="beta-calendar-detail" class="beta-calendar-detail"></div>
         </section>
         </div>
         </section>
@@ -1439,8 +1492,8 @@
             </div>
           </section>
         <section class="beta-panel">
-          <h3>Liaisons announce BitTorrent</h3>
-          <p class="beta-note" style="margin-bottom:10px">Lie les domaines d'annonce des clients BitTorrent aux trackers actifs quand les URLs d'announce ne correspondent pas aux URLs des sites.</p>
+          <h3>Liaisons d'annonces BitTorrent</h3>
+          <p class="beta-note" style="margin-bottom:10px">Associer les domaines d'annonce des clients BitTorrent aux trackers actifs quand les URL d'annonce ne correspondent pas aux URL des sites.</p>
           <div id="beta-announce-mappings"></div>
           <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap">
             <button class="beta-icon-btn" onclick="addBetaAnnounceMapping()" type="button">Ajouter une liaison</button>
@@ -1472,7 +1525,7 @@
         </section>
         <section class="beta-section" data-beta-section="classic">
         <section class="beta-panel">
-          <h3>Vue classique Beta</h3>
+          <h3>Vue classique bêta</h3>
           <div id="beta-grid"></div>
         </section>
         </section>
@@ -1774,7 +1827,7 @@
   function staleBadge(stat) {
     if (!stat.stale) return '';
     const failedAt = stat.stale.failedAt ? ` - dernier echec ${formatDateTime(stat.stale.failedAt)}` : '';
-    return `<span class="badge badge-stale" title="${escapeHtml((stat.stale.error || 'Timeout pendant le refresh') + failedAt)}">Donnees anciennes</span>`;
+    return `<span class="badge badge-stale" title="${escapeHtml((stat.stale.error || 'Timeout pendant le refresh') + failedAt)}">Données anciennes</span>`;
   }
 
   function trackerSchedule(stat) {
@@ -1833,6 +1886,7 @@
   let betaSettings = { qbitClients: [], notificationTargets: [], alertRules: [], defaults: {} };
   let betaHistory = [];
   let betaSelectedTrackerId = null;
+  let betaSelectedCalendarDay = new Date().toISOString().slice(0, 10);
 
   function getActiveGrid() {
     return document.getElementById(activeTab === 'beta' ? 'beta-grid' : 'grid');
@@ -1869,7 +1923,7 @@
       <div class="beta-summary-item"><span>Total</span><strong>${total}</strong></div>
       <div class="beta-summary-item"><span>OK</span><strong class="col-good">${healthy}</strong></div>
       <div class="beta-summary-item"><span>Erreurs</span><strong class="col-bad">${errors}</strong></div>
-      <div class="beta-summary-item"><span>Donnees anciennes</span><strong class="col-warn">${stale}</strong></div>
+      <div class="beta-summary-item"><span>Données anciennes</span><strong class="col-warn">${stale}</strong></div>
     `;
   }
 
@@ -1938,7 +1992,7 @@
     if (!container) return;
     const stat = selectedBetaTracker();
     if (!stat) {
-      container.innerHTML = '<p class="beta-note">Aucun tracker selectionne.</p>';
+      container.innerHTML = '<p class="beta-note">Aucun tracker sélectionné.</p>';
       return;
     }
     const host = trackerHostFromUrl(stat.trackerUrl || trackerConfig.find(t => t.id === stat.id)?.baseUrl || '');
@@ -1960,7 +2014,7 @@
               <td>${bytesText(item.downloadedBytes)}</td>
               <td>${item.ratio === null ? '-' : formatRatio(item.ratio)}</td>
             </tr>
-          `).join('') || '<tr><td colspan="6" class="cell-muted">Aucune donnee qBittorrent liee a ce tracker.</td></tr>'}
+          `).join('') || '<tr><td colspan="6" class="cell-muted">Aucune donnée BitTorrent liée à ce tracker.</td></tr>'}
         </tbody>
       </table>`;
   }
@@ -1970,7 +2024,7 @@
     if (!container) return;
     const stat = selectedBetaTracker();
     if (!stat) {
-      container.innerHTML = '<p class="beta-note">Selectionne un tracker dans la liste.</p>';
+      container.innerHTML = '<p class="beta-note">Sélectionner un tracker dans la liste.</p>';
       return;
     }
     const configured = trackerConfig.find(t => t.id === stat.id);
@@ -1989,7 +2043,7 @@
 
     container.innerHTML = `
       <div class="beta-detail-grid">
-        <div class="beta-detail-stat"><span>Statut</span><strong>${escapeHtml(stat.stale ? 'donnees anciennes' : stat.status)}</strong></div>
+        <div class="beta-detail-stat"><span>Statut</span><strong>${escapeHtml(stat.stale ? 'données anciennes' : stat.status)}</strong></div>
         <div class="beta-detail-stat"><span>Ratio</span><strong>${hasStatValue(ratio) ? formatRatio(ratio) : '-'}</strong></div>
         <div class="beta-detail-stat"><span>Buffer</span><strong>${Array.isArray(buffer) ? buffer.join(' ') : buffer}</strong></div>
         <div class="beta-detail-stat"><span>Seed</span><strong>${formatCount(stat.fields.seeding ?? stat.fields.seedTimeDays ?? stat.fields.seedTime)}</strong></div>
@@ -2003,18 +2057,18 @@
       </div>
       <div class="beta-grid-2">
         <div>
-          <h3>Erreurs recentes</h3>
+          <h3>Erreurs récentes</h3>
           ${stat.error || stat.stale ? `<div class="error-reason">${escapeHtml(stat.stale?.error || stat.error || '')}</div>` : ''}
-          <table class="beta-mini-table">
+          <table class="beta-mini-table beta-error-table">
             <thead><tr><th>Date</th><th>Erreur</th></tr></thead>
-            <tbody>${recentErrors.map(row => `<tr><td>${formatDateTime(row.capturedAt)}</td><td>${escapeHtml(row.error || row.status)}</td></tr>`).join('') || '<tr><td colspan="2" class="cell-muted">Aucune erreur historisee.</td></tr>'}</tbody>
+            <tbody>${recentErrors.map(row => `<tr><td>${formatDateTime(row.capturedAt)}</td><td>${escapeHtml(row.error || row.status)}</td></tr>`).join('') || '<tr><td colspan="2" class="cell-muted">Aucune erreur historisée.</td></tr>'}</tbody>
           </table>
         </div>
         <div>
-          <h3>Notifications configurees</h3>
+          <h3>Notifications configurées</h3>
           <div style="display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap:8px; align-items:end; margin-bottom:8px">
             <div class="beta-field"><label>Type</label><select id="tracker-alert-kind-${escapeHtml(stat.id)}"><option value="ratio">Ratio</option><option value="buffer">Buffer</option><option value="seedtime">Seedtime</option><option value="cookie">Cookie</option><option value="site">Site HS</option></select></div>
-            <div class="beta-field"><label>Condition</label><select id="tracker-alert-op-${escapeHtml(stat.id)}"><option value="<=">&lt;=</option><option value="<">&lt;</option><option value="soon">bientot expire</option><option value="down">HS</option></select></div>
+            <div class="beta-field"><label>Condition</label><select id="tracker-alert-op-${escapeHtml(stat.id)}"><option value="<=">&lt;=</option><option value="<">&lt;</option><option value="soon">bientôt expiré</option><option value="down">HS</option></select></div>
             <div class="beta-field"><label>Seuil</label><input id="tracker-alert-threshold-${escapeHtml(stat.id)}" type="number" step="0.01" value="1"></div>
             <button class="beta-icon-btn" onclick="addBetaAlertRuleForTracker('${escapeHtml(stat.id)}')" type="button">Ajouter</button>
           </div>
@@ -2022,15 +2076,15 @@
             <thead><tr><th>Alerte</th><th>Condition</th><th>Destinations</th></tr></thead>
             <tbody>${rules.map(rule => {
               const destinationLabels = (rule.targetIds || []).map(id => targets.get(id)?.label).filter(Boolean);
-              return `<tr><td>${escapeHtml(rule.kind)}${rule.enabled === false ? ' (off)' : ''}</td><td>${escapeHtml(rule.operator)} ${escapeHtml(rule.threshold)}</td><td>${escapeHtml(destinationLabels.join(', ') || 'Toutes actives / non precise')}</td></tr>`;
+              return `<tr><td>${escapeHtml(rule.kind)}${rule.enabled === false ? ' (off)' : ''}</td><td>${escapeHtml(rule.operator)} ${escapeHtml(rule.threshold)}</td><td>${escapeHtml(destinationLabels.join(', ') || 'Toutes actives / non précisé')}</td></tr>`;
             }).join('') || '<tr><td colspan="3" class="cell-muted">Aucune alerte individuelle pour ce tracker.</td></tr>'}</tbody>
           </table>
         </div>
       </div>
       <div style="margin-top:12px">
-        <h3>Torrents lies dans les clients BitTorrent</h3>
+        <h3>Torrents liés dans les clients BitTorrent</h3>
         <table class="beta-mini-table">
-          <thead><tr><th>Client</th><th>Torrent</th><th>Etat</th><th>Taille</th><th>Progression</th><th>UP</th><th>DL</th><th>Ratio</th></tr></thead>
+          <thead><tr><th>Client</th><th>Torrent</th><th>État</th><th>Taille</th><th>Progression</th><th>UP</th><th>DL</th><th>Ratio</th></tr></thead>
           <tbody>${torrents.map(torrent => `
             <tr>
               <td>${escapeHtml(torrent.clientLabel)}</td>
@@ -2042,17 +2096,17 @@
               <td>${bytesText(torrent.downloadedBytes)}</td>
               <td>${torrent.ratio === null ? '-' : formatRatio(torrent.ratio)}</td>
             </tr>
-          `).join('') || '<tr><td colspan="8" class="cell-muted">Aucun torrent lie. Verifie les liaisons announce BitTorrent.</td></tr>'}</tbody>
+          `).join('') || '<tr><td colspan="8" class="cell-muted">Aucun torrent lié. Vérifier les liaisons d&apos;annonces BitTorrent.</td></tr>'}</tbody>
         </table>
       </div>
       ${suggestedTorrents.length ? `
         <div style="margin-top:12px">
-          <h3>Torrents detectes a importer</h3>
-          <p class="beta-note" style="margin-bottom:8px">Ces torrents viennent d'announce hosts non lies, mais ils ressemblent a ce tracker.</p>
+          <h3>Torrents détectés à importer</h3>
+          <p class="beta-note" style="margin-bottom:8px">Ces torrents proviennent d'hôtes d'annonce non liés, mais ressemblent à ce tracker.</p>
           ${suggestedQbits.map(item => `
             <div class="beta-match-card">
               <div class="beta-card-row">
-                <div><strong>${escapeHtml(item.trackerHost)}</strong><span>${item.torrentCount} torrent(s) detecte(s) dans ${escapeHtml(item.clientLabel)}</span></div>
+                <div><strong>${escapeHtml(item.trackerHost)}</strong><span>${item.torrentCount} torrent(s) détecté(s) dans ${escapeHtml(item.clientLabel)}</span></div>
                 <button class="beta-icon-btn" onclick="addBetaAnnounceMapping('${escapeHtml(item.trackerHost)}', '${escapeHtml(stat.id)}')" type="button">Importer / lier</button>
               </div>
             </div>
@@ -2083,11 +2137,11 @@
     container.innerHTML = `
       ${['fonctionne', 'cassé', 'captcha', 'cookie-only'].map(mode => `
         <div class="beta-card-row">
-          <div><strong>${escapeHtml(mode)}</strong><span>Etat detecte cote Beta</span></div>
+          <div><strong>${escapeHtml(mode)}</strong><span>État détecté côté bêta</span></div>
           <span>${counts[mode] || 0}</span>
         </div>
       `).join('')}
-      <p class="beta-note" style="margin-top:8px">La classification se base sur les erreurs connues, la reachability, les cookies colles et le mode cookieOnly des definitions.</p>`;
+      <p class="beta-note" style="margin-top:8px">La classification repose sur les erreurs connues, l'accessibilité, les cookies collés et le mode cookieOnly des définitions.</p>`;
   }
 
   function historyForSelectedTracker() {
@@ -2136,7 +2190,7 @@
     const container = document.getElementById(canvasId);
     if (!container) return;
     if (rows.length < 2) {
-      container.innerHTML = `<div class="beta-chart-header"><div class="beta-chart-title">${escapeHtml(title)}</div></div><p class="beta-note">Pas encore assez de donnees pour tracer ce graphique.</p>`;
+      container.innerHTML = `<div class="beta-chart-header"><div class="beta-chart-title">${escapeHtml(title)}</div></div><p class="beta-note">Pas encore assez de données pour tracer ce graphique.</p>`;
       return;
     }
     const values = rows.flatMap(row => seriesDefs.map(def => Number(def.value(row))).filter(Number.isFinite));
@@ -2201,15 +2255,16 @@
   function renderBetaCalendar() {
     const container = document.getElementById('beta-calendar');
     if (!container) return;
-    const rows = historyForSelectedTracker();
+    const rows = betaHistory;
     const title = document.getElementById('beta-calendar-title');
     const month = new Date(betaCalendarMonth.getFullYear(), betaCalendarMonth.getMonth(), 1);
     if (title) title.textContent = month.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
     const byDay = new Map();
     rows.forEach(row => {
       const day = String(row.capturedAt || '').slice(0, 10);
-      const item = byDay.get(day) || { ok: 0, bad: 0 };
-      if (row.status === 'ok') item.ok += 1; else item.bad += 1;
+      const item = byDay.get(day) || new Map();
+      const previous = item.get(row.trackerId);
+      if (!previous || String(row.capturedAt || '') > String(previous.capturedAt || '')) item.set(row.trackerId, row);
       byDay.set(day, item);
     });
     const firstDay = (month.getDay() + 6) % 7;
@@ -2220,19 +2275,80 @@
       const d = new Date(start);
       d.setDate(start.getDate() + i);
       const key = d.toISOString().slice(0, 10);
-      const item = byDay.get(key) || { ok: 0, bad: 0 };
+      const dayRows = [...(byDay.get(key)?.values() || [])];
+      const item = {
+        ok: dayRows.filter(row => row.status === 'ok').length,
+        bad: dayRows.filter(row => row.status !== 'ok').length,
+      };
       const cls = item.bad > 0 ? 'bad' : (item.ok > 0 ? 'ok' : '');
       const out = d.getMonth() === month.getMonth() ? '' : 'out';
+      const active = key === betaSelectedCalendarDay ? 'active' : '';
       days.push(`
-        <div class="beta-day ${cls} ${out}" title="${key}">
+        <button class="beta-day ${cls} ${out} ${active}" title="${key}" onclick="selectBetaCalendarDay('${key}')" type="button">
           <span class="beta-day-num">${d.getDate()}</span>
           <span class="beta-day-meta">
             ${item.ok ? `<span class="beta-pill ok">${item.ok} OK</span>` : ''}
             ${item.bad ? `<span class="beta-pill bad">${item.bad} KO</span>` : ''}
           </span>
-        </div>`);
+        </button>`);
     }
     container.innerHTML = days.join('');
+    renderBetaCalendarDetail();
+  }
+
+  function betaTrackerPageUrl(trackerId) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', 'beta');
+    url.searchParams.set('section', 'overview');
+    url.searchParams.set('tracker', trackerId);
+    return url.toString();
+  }
+
+  function latestBetaRowsForDay(day) {
+    const byTracker = new Map();
+    betaHistory
+      .filter(row => String(row.capturedAt || '').slice(0, 10) === day)
+      .forEach(row => {
+        const previous = byTracker.get(row.trackerId);
+        if (!previous || String(row.capturedAt || '') > String(previous.capturedAt || '')) byTracker.set(row.trackerId, row);
+      });
+    return [...byTracker.values()].sort((a, b) => {
+      const nameA = latestSortedStats.find(stat => stat.id === a.trackerId)?.name || a.trackerId || '';
+      const nameB = latestSortedStats.find(stat => stat.id === b.trackerId)?.name || b.trackerId || '';
+      return nameA.localeCompare(nameB, 'fr', { sensitivity: 'base' });
+    });
+  }
+
+  function renderBetaCalendarDetail() {
+    const container = document.getElementById('beta-calendar-detail');
+    if (!container) return;
+    const rows = latestBetaRowsForDay(betaSelectedCalendarDay);
+    const okRows = rows.filter(row => row.status === 'ok');
+    const badRows = rows.filter(row => row.status !== 'ok');
+    const renderLinks = list => list.map(row => {
+      const stat = latestSortedStats.find(item => item.id === row.trackerId);
+      const label = stat?.name || row.trackerName || row.trackerId || 'Tracker';
+      const status = row.status === 'ok' ? 'OK' : (row.error || row.status || 'Erreur');
+      return `<a href="${escapeHtml(betaTrackerPageUrl(row.trackerId))}" target="_blank" rel="noreferrer noopener"><strong>${escapeHtml(label)}</strong><span>${escapeHtml(status)}</span></a>`;
+    }).join('') || '<p class="beta-note">Aucun tracker.</p>';
+    const label = new Date(`${betaSelectedCalendarDay}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+    container.innerHTML = `
+      <h4>${escapeHtml(label)}</h4>
+      <div class="beta-calendar-columns">
+        <div>
+          <div class="beta-pill ok">${okRows.length} OK</div>
+          ${renderLinks(okRows)}
+        </div>
+        <div>
+          <div class="beta-pill bad">${badRows.length} KO</div>
+          ${renderLinks(badRows)}
+        </div>
+      </div>`;
+  }
+
+  function selectBetaCalendarDay(day) {
+    betaSelectedCalendarDay = day;
+    renderBetaCalendar();
   }
 
   function shiftBetaCalendar(delta) {
@@ -2242,7 +2358,13 @@
 
   function trackerHostFromUrl(url) {
     try { return new URL(url).hostname.replace(/^www\./, '').toLowerCase(); }
-    catch { return String(url || '').replace(/^https?:\/\//, '').split('/')[0].replace(/^www\./, '').toLowerCase(); }
+    catch { return String(url || '').replace(/^https?:\/\//i, '').split('/')[0].split('?')[0].replace(/^www\./, '').toLowerCase(); }
+  }
+
+  function hostDomainKey(host) {
+    const clean = trackerHostFromUrl(host);
+    const parts = clean.split('.').filter(Boolean);
+    return parts.length <= 2 ? clean : parts.slice(-2).join('.');
   }
 
   function betaTokens(value) {
@@ -2258,6 +2380,7 @@
       const trackerTokens = [...new Set([...betaTokens(baseHost), ...betaTokens(tracker.name), ...betaTokens(tracker.id)])];
       let score = 0;
       if (announceHost === baseHost) score += 100;
+      if (hostDomainKey(announceHost) === hostDomainKey(baseHost)) score += 90;
       if (announceHost.includes(baseHost) || baseHost.includes(announceHost)) score += 45;
       for (const token of announceTokens) {
         if (trackerTokens.includes(token)) score += 12;
@@ -2282,7 +2405,7 @@
         <div class="beta-field"><label>Actif</label><select data-field="enabled"><option value="true" ${client.enabled !== false ? 'selected' : ''}>Oui</option><option value="false" ${client.enabled === false ? 'selected' : ''}>Non</option></select></div>
         <div style="display:flex; gap:6px; align-items:flex-end"><button class="beta-icon-btn" onclick="testBetaQbitClient(${idx})" type="button">Tester</button><button class="beta-icon-btn" onclick="removeBetaQbitClient(${idx})" type="button">X</button></div>
       </div>
-    `).join('') || '<p class="beta-note">Ajoute un ou plusieurs clients qBittorrent ou ruTorrent/rTorrent pour comparer les stats locales aux stats des sites.</p>';
+    `).join('') || '<p class="beta-note">Ajouter un ou plusieurs clients qBittorrent ou ruTorrent/rTorrent pour comparer les stats locales aux stats des sites.</p>';
   }
 
   function renderBetaAnnounceMappings() {
@@ -2300,21 +2423,21 @@
         <tr>
           <td>${escapeHtml(host)}</td>
           <td>${torrentCount} torrent(s)</td>
-          <td>${mapped ? escapeHtml(trackerConfig.find(t => t.id === mapped.trackerId)?.name || mapped.trackerId) : (match ? `${escapeHtml(match.tracker.name)} <span class="cell-muted">(${match.score})</span>` : '<span class="cell-muted">Non lie</span>')}</td>
-          <td>${mapped ? '' : `<button class="beta-icon-btn" onclick="addBetaAnnounceMapping('${escapeHtml(host)}', '${escapeHtml(match?.tracker.id || '')}')" type="button">${match ? 'Lier suggestion' : 'Lier'}</button>`}</td>
+          <td>${mapped ? escapeHtml(trackerConfig.find(t => t.id === mapped.trackerId)?.name || mapped.trackerId) : (match ? `${escapeHtml(match.tracker.name)} <span class="cell-muted">(${match.score})</span>` : '<span class="cell-muted">Non lié</span>')}</td>
+          <td>${mapped ? '' : `<button class="beta-icon-btn" onclick="addBetaAnnounceMapping('${escapeHtml(host)}', '${escapeHtml(match?.tracker.id || '')}')" type="button">${match ? 'Lier la suggestion' : 'Lier'}</button>`}</td>
         </tr>`;
     }).join('');
     const editRows = mappings.map((mapping, idx) => `
       <div class="beta-form-row" data-beta-mapping="${idx}" style="grid-template-columns:2fr 2fr auto">
-        <div class="beta-field"><label>Host announce</label><input data-field="announceHost" value="${escapeHtml(mapping.announceHost || '')}" placeholder="tracker.example.org"></div>
+        <div class="beta-field"><label>Hôte d'annonce</label><input data-field="announceHost" value="${escapeHtml(mapping.announceHost || '')}" placeholder="tracker.example.org"></div>
         <div class="beta-field"><label>Tracker actif</label><select data-field="trackerId">${trackerOptions}</select></div>
         <button class="beta-icon-btn" onclick="removeBetaAnnounceMapping(${idx})" type="button">X</button>
       </div>
     `).join('');
     container.innerHTML = `
       <table class="beta-mini-table" style="margin-bottom:10px">
-        <thead><tr><th>Host detecte</th><th>Torrents</th><th>Suggestion / lien</th><th></th></tr></thead>
-        <tbody>${detectedRows || '<tr><td colspan="3" class="cell-muted">Aucun host détecté. Lance Sync clients BitTorrent après avoir configuré un client.</td></tr>'}</tbody>
+        <thead><tr><th>Hôte détecté</th><th>Torrents</th><th>Suggestion / lien</th><th></th></tr></thead>
+        <tbody>${detectedRows || '<tr><td colspan="3" class="cell-muted">Aucun hôte détecté. Lancer la synchronisation des clients BitTorrent après avoir configuré un client.</td></tr>'}</tbody>
       </table>
       ${editRows || '<p class="beta-note">Aucune liaison manuelle pour le moment.</p>'}
     `;
@@ -2337,7 +2460,7 @@
         <div class="beta-field"><label>Actif</label><select data-field="enabled"><option value="true" ${target.enabled !== false ? 'selected' : ''}>Oui</option><option value="false" ${target.enabled === false ? 'selected' : ''}>Non</option></select></div>
         <div style="display:flex; gap:6px"><button class="beta-icon-btn" onclick="testBetaNotification('${escapeHtml(target.id)}')" type="button">Tester</button><button class="beta-icon-btn" onclick="removeBetaNotificationTarget(${idx})" type="button">X</button></div>
       </div>
-    `).join('') || '<p class="beta-note">Ajoute Discord et/ou Apprise. Les URLs sont masquees au rechargement.</p>';
+    `).join('') || '<p class="beta-note">Ajouter Discord et/ou Apprise. Les URL sont masquées au rechargement.</p>';
   }
 
   function renderBetaAlertRules() {
@@ -2352,13 +2475,13 @@
           <option value="ratio">Ratio</option><option value="buffer">Buffer</option><option value="seedtime">Seedtime</option><option value="cookie">Cookie</option><option value="site">Site HS</option>
         </select></div>
         <div class="beta-field"><label>Condition</label><select data-field="operator">
-          <option value="<=">&lt;=</option><option value="<">&lt;</option><option value=">=">&gt;=</option><option value=">">&gt;</option><option value="soon">bientot expire</option><option value="expired">expire</option><option value="down">HS</option>
+          <option value="<=">&lt;=</option><option value="<">&lt;</option><option value=">=">&gt;=</option><option value=">">&gt;</option><option value="soon">bientôt expiré</option><option value="expired">expiré</option><option value="down">HS</option>
         </select></div>
         <div class="beta-field"><label>Seuil</label><input data-field="threshold" type="number" step="0.01" value="${escapeHtml(rule.threshold ?? 1)}"></div>
         <div class="beta-field"><label>Actif</label><select data-field="enabled"><option value="true" ${rule.enabled !== false ? 'selected' : ''}>Oui</option><option value="false" ${rule.enabled === false ? 'selected' : ''}>Non</option></select></div>
         <button class="beta-icon-btn" onclick="removeBetaAlertRule(${idx})" type="button">X</button>
       </div>
-    `).join('') || '<p class="beta-note">Alertes globales proposees : ratio <= 1 hors ratioless, cookie bientot expire, site HS. Tu peux ajouter des seuils par tracker ici.</p>';
+    `).join('') || '<p class="beta-note">Alertes globales proposées : ratio <= 1 hors ratioless, cookie bientôt expiré, site HS. Ajouter des seuils par tracker ici.</p>';
     rules.forEach((rule, idx) => {
       const row = container.querySelector(`[data-beta-rule="${idx}"]`);
       if (!row) return;
@@ -2516,7 +2639,7 @@
       betaSettings = data.settings;
       await loadBetaData();
     } else {
-      alert(data.error || 'Erreur sauvegarde Beta');
+      alert(data.error || 'Erreur de sauvegarde bêta');
     }
   }
 
@@ -2534,13 +2657,36 @@
   }
 
   async function refreshBetaQbit() {
-    const r = await fetch('/api/beta/qbit/refresh', { method: 'POST' });
-    const data = await r.json();
-    if (!data.ok) {
-      alert(data.error || 'Refresh clients BitTorrent KO');
-      return;
+    const btn = document.getElementById('beta-refresh-clients');
+    const previousLabel = btn?.textContent || '';
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Synchronisation...';
     }
-    await loadBetaData();
+    try {
+      betaSettings = collectBetaSettingsFromDom();
+      const saveResponse = await fetch('/api/beta/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(betaSettings),
+      });
+      const saveData = await saveResponse.json();
+      if (!saveData.ok) throw new Error(saveData.error || 'Erreur de sauvegarde bêta');
+      betaSettings = saveData.settings;
+
+      const r = await fetch('/api/beta/qbit/refresh', { method: 'POST' });
+      const data = await r.json();
+      if (!data.ok) throw new Error(data.error || 'Échec de synchronisation des clients BitTorrent');
+      await loadBetaData();
+      alert(`Clients BitTorrent synchronisés : ${data.stats.reduce((sum, item) => sum + item.torrentCount, 0)} torrent(s), ${data.stats.length} hôte(s) d'annonce.`);
+    } catch (err) {
+      alert(err?.message || 'Échec de synchronisation des clients BitTorrent');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = previousLabel || 'Synchroniser les clients BitTorrent';
+      }
+    }
   }
 
   async function testBetaNotification(targetId) {
@@ -2551,7 +2697,7 @@
       body: JSON.stringify({ targetId }),
     });
     const data = await r.json();
-    alert(data.ok ? 'Notification envoyee' : `Notification KO: ${data.error}`);
+    alert(data.ok ? 'Notification envoyée' : `Notification KO: ${data.error}`);
   }
 
   function renderBetaControls() {
@@ -2586,7 +2732,8 @@
   }
 
   function loadActiveTab() {
-    setActiveTab(localStorage.getItem('tracker-dashboard-tab') || 'dashboard');
+    const params = new URLSearchParams(window.location.search);
+    setActiveTab(params.get('tab') || localStorage.getItem('tracker-dashboard-tab') || 'dashboard');
   }
 
   function setBetaFilter(filter) {
@@ -2597,8 +2744,10 @@
   }
 
   function loadBetaSettings() {
+    const params = new URLSearchParams(window.location.search);
     betaStatusFilter = localStorage.getItem('tracker-dashboard-beta-filter') || 'all';
-    betaSection = localStorage.getItem('tracker-dashboard-beta-section') || 'overview';
+    betaSection = params.get('section') || localStorage.getItem('tracker-dashboard-beta-section') || 'overview';
+    betaSelectedTrackerId = params.get('tracker') || betaSelectedTrackerId;
     renderBetaControls();
   }
 

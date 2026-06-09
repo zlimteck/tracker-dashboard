@@ -1697,8 +1697,57 @@ function trackerHost(value: string | undefined): string {
   try {
     return new URL(value).hostname.replace(/^www\./, '').toLowerCase();
   } catch {
-    return String(value).replace(/^https?:\/\//, '').split('/')[0].replace(/^www\./, '').toLowerCase() || 'unknown';
+    return String(value)
+      .replace(/^https?:\/\//i, '')
+      .split('/')[0]
+      .split('?')[0]
+      .replace(/^www\./, '')
+      .toLowerCase() || 'unknown';
   }
+}
+
+function hostDomainKey(host: string): string {
+  const clean = trackerHost(host);
+  if (clean === 'unknown') return clean;
+  const parts = clean.split('.').filter(Boolean);
+  return parts.length <= 2 ? clean : parts.slice(-2).join('.');
+}
+
+function matchTokens(value: string): string[] {
+  return trackerHost(value)
+    .split(/[^a-z0-9]+/i)
+    .map(token => token.toLowerCase())
+    .filter(token => token.length >= 3 && !['www', 'net', 'org', 'com', 'lol', 'cc'].includes(token));
+}
+
+function betaTrackerMatchScore(announceHost: string, tracker: TrackerConfig): number {
+  const announce = trackerHost(announceHost);
+  const base = trackerHost(tracker.baseUrl);
+  if (announce === 'unknown' || base === 'unknown') return 0;
+  let score = 0;
+  if (announce === base) score += 120;
+  if (hostDomainKey(announce) === hostDomainKey(base)) score += 90;
+  if (announce.includes(base) || base.includes(announce)) score += 45;
+  const announceTokens = new Set(matchTokens(announce));
+  const trackerTokens = new Set([
+    ...matchTokens(base),
+    ...String(tracker.name || '').toLowerCase().split(/[^a-z0-9]+/i).filter(token => token.length >= 3),
+    ...String(tracker.id || '').toLowerCase().split(/[^a-z0-9]+/i).filter(token => token.length >= 3),
+  ]);
+  for (const token of announceTokens) {
+    if (trackerTokens.has(token)) score += 25;
+  }
+  return score;
+}
+
+function betaTrackerIdForAnnounceHost(announceHost: string, trackerHosts: Map<string, string>, activeTrackers: TrackerConfig[]): string | null {
+  const host = trackerHost(announceHost);
+  const direct = trackerHosts.get(host) ?? trackerHosts.get(hostDomainKey(host));
+  if (direct) return direct;
+  const best = activeTrackers
+    .map(tracker => ({ tracker, score: betaTrackerMatchScore(host, tracker) }))
+    .sort((a, b) => b.score - a.score)[0];
+  return best && best.score >= 45 ? best.tracker.id : null;
 }
 
 async function fetchQbitClient(client: BetaQbitClient): Promise<QbitTrackerAggregate[]> {
@@ -1724,8 +1773,24 @@ async function fetchQbitClient(client: BetaQbitClient): Promise<QbitTrackerAggre
   const response = await axios.get(`${baseUrl}/api/v2/torrents/info`, {
     timeout: 12000,
     headers: jar.length ? { Cookie: jar.join('; ') } : undefined,
+    params: { filter: 'all' },
   });
-  const torrents = Array.isArray(response.data) ? response.data as Array<Record<string, unknown>> : [];
+  let torrents = Array.isArray(response.data) ? response.data as Array<Record<string, unknown>> : [];
+  if (!torrents.length) {
+    try {
+      const syncResponse = await axios.get(`${baseUrl}/api/v2/sync/maindata`, {
+        timeout: 12000,
+        headers: jar.length ? { Cookie: jar.join('; ') } : undefined,
+        params: { rid: 0 },
+      });
+      const syncTorrents = (syncResponse.data as { torrents?: Record<string, Record<string, unknown>> })?.torrents;
+      torrents = syncTorrents && typeof syncTorrents === 'object'
+        ? Object.entries(syncTorrents).map(([hash, torrent]) => ({ hash, ...torrent }))
+        : torrents;
+    } catch {
+      // Keep the regular torrents/info result when sync/maindata is unavailable.
+    }
+  }
   const groups = new Map<string, QbitTrackerAggregate>();
   const headers = jar.length ? { Cookie: jar.join('; ') } : undefined;
   for (const torrent of torrents) {
@@ -1751,6 +1816,7 @@ async function fetchQbitClient(client: BetaQbitClient): Promise<QbitTrackerAggre
       }
     }
     const host = trackerHost(announce || String(torrent.magnet_uri || 'unknown'));
+    if (host === 'unknown') continue;
     const existing = groups.get(host) ?? {
       clientId: client.id,
       clientLabel: client.label,
@@ -2058,13 +2124,20 @@ export async function start(): Promise<void> {
   app.get('/api/beta/overview', (_req, res) => {
     trackers = normalizeTrackerConfigs();
     const settings = loadBetaSettings();
-    const trackerHosts = new Map(trackers.map(tracker => [trackerHost(tracker.baseUrl), tracker.id]));
+    const trackerHosts = new Map<string, string>();
+    for (const tracker of trackers) {
+      const host = trackerHost(tracker.baseUrl);
+      trackerHosts.set(host, tracker.id);
+      trackerHosts.set(hostDomainKey(host), tracker.id);
+    }
     for (const mapping of settings.announceMappings) {
-      trackerHosts.set(trackerHost(mapping.announceHost), mapping.trackerId);
+      const host = trackerHost(mapping.announceHost);
+      trackerHosts.set(host, mapping.trackerId);
+      trackerHosts.set(hostDomainKey(host), mapping.trackerId);
     }
     const qbitByTracker = betaQbitStats.map(item => ({
       ...item,
-      trackerId: trackerHosts.get(item.trackerHost) ?? null,
+      trackerId: betaTrackerIdForAnnounceHost(item.trackerHost, trackerHosts, trackers),
     }));
     const cookieSummaries = listTrackerDefinitionFiles().map(definition => {
       const configured = trackers.find(tracker => tracker.id === definition.id);
