@@ -404,6 +404,11 @@
     .beta-chart-legend span { display: inline-flex; align-items: center; gap: 4px; }
     .beta-chart-legend i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
     .beta-chart svg { width: 100%; height: 170px; display: block; }
+    .beta-chart-axis-label {
+      fill: var(--muted);
+      font-size: 10px;
+      text-anchor: end;
+    }
     .beta-chart-kpis {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
@@ -418,6 +423,59 @@
       font-size: 11px;
     }
     .beta-chart-kpis strong { display: block; color: var(--text); font-size: 13px; margin-top: 2px; }
+    .beta-chart-controls {
+      display: flex;
+      gap: 8px;
+      align-items: end;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .beta-chart-controls .beta-field { max-width: 180px; }
+    .beta-chart-bars {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 10px;
+    }
+    .beta-bar-list {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--bg) 72%, transparent);
+      padding: 10px;
+    }
+    .beta-bar-list h4 {
+      margin: 0 0 10px;
+      font-size: 13px;
+    }
+    .beta-bar-row {
+      display: grid;
+      grid-template-columns: minmax(86px, 140px) minmax(0, 1fr) 86px;
+      gap: 8px;
+      align-items: center;
+      margin: 8px 0;
+      font-size: 12px;
+    }
+    .beta-bar-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .beta-bar-track {
+      height: 8px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--muted) 20%, transparent);
+      overflow: hidden;
+    }
+    .beta-bar-fill {
+      height: 100%;
+      min-width: 2px;
+      border-radius: inherit;
+    }
+    .beta-bar-value {
+      color: var(--muted);
+      font-size: 11px;
+      text-align: right;
+      white-space: nowrap;
+    }
     .beta-match-card {
       border: 1px solid var(--border);
       border-radius: 8px;
@@ -1552,15 +1610,31 @@
         <div class="beta-stack">
         <section class="beta-panel">
           <h3>Graphique global</h3>
-          <div style="display:flex; gap:8px; align-items:end; flex-wrap:wrap; margin-bottom:10px">
-            <div class="beta-field" style="max-width:180px"><label for="beta-global-period">Période</label><select id="beta-global-period" onchange="drawBetaGlobalChart()"><option value="day">Jour</option><option value="week">Semaine</option><option value="month">Mois</option></select></div>
-            <div class="beta-note">Totaux des trackers actifs : UP, DL et seedtime agrégés par période.</div>
+          <div class="beta-chart-controls">
+            <div class="beta-field"><label for="beta-global-period">Période</label><select id="beta-global-period" onchange="drawBetaCharts()"><option value="day">Jour</option><option value="week">Semaine</option><option value="month">Mois</option></select></div>
+            <div class="beta-field"><label for="beta-global-mode">Valeurs</label><select id="beta-global-mode" onchange="drawBetaCharts()"><option value="delta">Activité par période</option><option value="total">Cumul</option></select></div>
+            <div class="beta-note">UP, DL et seedtime agrégés. Le mode activité calcule la différence avec la période précédente.</div>
           </div>
           <div id="beta-global-chart" class="beta-chart"></div>
         </section>
         <section class="beta-panel">
           <h3>Évolution globale et tracker sélectionné</h3>
+          <div class="beta-chart-controls">
+            <div class="beta-field"><label for="beta-history-metric">Métrique</label><select id="beta-history-metric" onchange="drawBetaCharts()"><option value="all">UP / DL / Ratio</option><option value="uploadedBytes">UP seul</option><option value="downloadedBytes">DL seul</option><option value="ratio">Ratio seul</option></select></div>
+            <div class="beta-field"><label for="beta-history-mode">Valeurs</label><select id="beta-history-mode" onchange="drawBetaCharts()"><option value="delta">Activité par période</option><option value="total">Cumul</option></select></div>
+          </div>
           <div id="beta-history-chart" class="beta-chart"></div>
+        </section>
+        <section class="beta-panel">
+          <h3>Comparaison multi-trackers</h3>
+          <div class="beta-chart-controls">
+            <div class="beta-field"><label for="beta-multi-metric">Métrique</label><select id="beta-multi-metric" onchange="drawBetaCharts()"><option value="downloadedBytes">DL quotidien</option><option value="uploadedBytes">UP quotidien</option><option value="ratio">Ratio</option></select></div>
+          </div>
+          <div id="beta-multi-chart" class="beta-chart"></div>
+        </section>
+        <section class="beta-panel">
+          <h3>Totaux par tracker</h3>
+          <div id="beta-total-bars" class="beta-chart-bars"></div>
         </section>
         <section class="beta-panel">
           <h3>Calendrier des refreshs</h3>
@@ -1585,11 +1659,10 @@
             </div>
           </section>
         <section class="beta-panel">
-          <h3>Liaisons d'annonces BitTorrent</h3>
-          <p class="beta-note" style="margin-bottom:10px">Associer les domaines d'annonce des clients BitTorrent aux trackers actifs quand les URL d'annonce ne correspondent pas aux URL des sites.</p>
+          <h3>Associations BitTorrent</h3>
+          <p class="beta-note" style="margin-bottom:10px">Associer les torrents détectés dans les clients BitTorrent aux trackers actifs quand ils ne sont pas reconnus automatiquement.</p>
           <div id="beta-announce-mappings"></div>
           <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap">
-            <button class="beta-icon-btn" onclick="addBetaAnnounceMapping()" type="button">Ajouter une liaison</button>
             <button class="beta-icon-btn primary" onclick="saveBetaSettings()" type="button">Enregistrer</button>
           </div>
         </section>
@@ -1981,6 +2054,12 @@
   let betaSelectedTrackerId = null;
   let betaSelectedCalendarDay = new Date().toISOString().slice(0, 10);
   let betaTableSort = { key: 'name', dir: 'asc' };
+  const betaMetricDefs = {
+    uploadedBytes: { label: 'UP', color: '#22c55e', format: value => bytesText(value).replace(/<[^>]+>/g, ''), axis: value => formatBytes(value, 'binary').join(' ') },
+    downloadedBytes: { label: 'DL', color: '#3b82f6', format: value => bytesText(value).replace(/<[^>]+>/g, ''), axis: value => formatBytes(value, 'binary').join(' ') },
+    ratio: { label: 'Ratio', color: '#eab308', format: value => Number.isFinite(value) ? value.toFixed(2) : '-', axis: value => Number.isFinite(value) ? value.toFixed(2) : '-' },
+    seedTimeDays: { label: 'Seedtime', color: '#eab308', format: value => `${Number(value || 0).toFixed(1)} j`, axis: value => `${Number(value || 0).toFixed(1)} j` },
+  };
 
   function getActiveGrid() {
     return document.getElementById(activeTab === 'beta' ? 'beta-grid' : 'grid');
@@ -2326,13 +2405,13 @@
               <td>${bytesText(torrent.downloadedBytes)}</td>
               <td>${torrent.ratio === null ? '-' : formatRatio(torrent.ratio)}</td>
             </tr>
-          `).join('') || '<tr><td colspan="8" class="cell-muted">Aucun torrent lié. Vérifier les liaisons d&apos;annonces BitTorrent.</td></tr>'}</tbody>
+          `).join('') || '<tr><td colspan="8" class="cell-muted">Aucun torrent lié. Vérifier les associations BitTorrent.</td></tr>'}</tbody>
         </table>
       </div>
       ${suggestedTorrents.length ? `
         <div style="margin-top:12px">
           <h3>Torrents détectés à importer</h3>
-          <p class="beta-note" style="margin-bottom:8px">Ces torrents proviennent d'hôtes d'annonce non liés, mais ressemblent à ce tracker.</p>
+          <p class="beta-note" style="margin-bottom:8px">Ces torrents ne sont pas encore associés, mais ressemblent à ce tracker.</p>
           ${suggestedQbits.map(item => `
             <div class="beta-match-card">
               <div class="beta-card-row">
@@ -2395,28 +2474,83 @@
     return d.toISOString().slice(0, 10);
   }
 
-  function latestSnapshotsByTrackerAndPeriod(period) {
+  function trackerDisplayName(trackerId) {
+    return latestSortedStats.find(stat => stat.id === trackerId)?.name
+      || trackerConfig.find(tracker => tracker.id === trackerId)?.name
+      || trackerId
+      || 'Tracker';
+  }
+
+  function trackerColor(trackerId, index = 0) {
+    const seed = String(trackerId || index).split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
+    return `hsl(${(seed * 47 + index * 29) % 360} 72% 58%)`;
+  }
+
+  function rowMetricValue(row, metric) {
+    if (metric === 'ratio') return Number(computedRatio(row.fields || {}) || 0);
+    if (metric === 'seedTimeDays') return Number(row.fields?.seedTimeDays || row.fields?.seedTime || 0);
+    return Number(row.fields?.[metric] || 0);
+  }
+
+  function latestRowsByTrackerAndPeriod(period, sourceRows = betaHistory) {
     const latest = new Map();
-    betaHistory.forEach(row => {
+    sourceRows.forEach(row => {
       const key = betaPeriodKey(row.capturedAt, period);
       if (!key) return;
       const mapKey = `${key}::${row.trackerId}`;
       const prev = latest.get(mapKey);
       if (!prev || String(row.capturedAt) > String(prev.capturedAt)) latest.set(mapKey, row);
     });
+    return [...latest.values()].sort((a, b) => String(a.capturedAt || '').localeCompare(String(b.capturedAt || '')));
+  }
+
+  function periodRowsForTracker(trackerId, period = 'day') {
+    return latestRowsByTrackerAndPeriod(period, betaHistory.filter(row => row.trackerId === trackerId));
+  }
+
+  function latestSnapshotsByTrackerAndPeriod(period, mode = 'total') {
+    const latest = latestRowsByTrackerAndPeriod(period);
     const grouped = new Map();
-    for (const row of latest.values()) {
+    const previousByTracker = new Map();
+    for (const row of latest) {
       const key = betaPeriodKey(row.capturedAt, period);
       const item = grouped.get(key) || { label: key, uploadedBytes: 0, downloadedBytes: 0, seedTimeDays: 0 };
-      item.uploadedBytes += Number(row.fields?.uploadedBytes || 0);
-      item.downloadedBytes += Number(row.fields?.downloadedBytes || 0);
-      item.seedTimeDays += Number(row.fields?.seedTimeDays || row.fields?.seedTime || 0);
+      const previous = previousByTracker.get(row.trackerId);
+      const source = metric => {
+        const current = rowMetricValue(row, metric);
+        if (mode !== 'delta' || metric === 'ratio') return current;
+        if (!previous) return 0;
+        return Math.max(0, current - rowMetricValue(previous, metric));
+      };
+      item.uploadedBytes += source('uploadedBytes');
+      item.downloadedBytes += source('downloadedBytes');
+      item.seedTimeDays += source('seedTimeDays');
       grouped.set(key, item);
+      previousByTracker.set(row.trackerId, row);
     }
     return [...grouped.values()].sort((a, b) => a.label.localeCompare(b.label)).slice(-36);
   }
 
-  function drawSeriesChart(canvasId, rows, seriesDefs, title) {
+  function chartRowsForTracker(trackerId, period, mode) {
+    const rows = periodRowsForTracker(trackerId, period);
+    return rows.map((row, idx) => {
+      const previous = rows[idx - 1];
+      const value = metric => {
+        const current = rowMetricValue(row, metric);
+        if (mode !== 'delta' || metric === 'ratio') return current;
+        if (!previous) return 0;
+        return Math.max(0, current - rowMetricValue(previous, metric));
+      };
+      return {
+        label: betaPeriodKey(row.capturedAt, period),
+        uploadedBytes: value('uploadedBytes'),
+        downloadedBytes: value('downloadedBytes'),
+        ratio: value('ratio'),
+      };
+    }).slice(-80);
+  }
+
+  function drawSeriesChart(canvasId, rows, seriesDefs, title, options = {}) {
     const container = document.getElementById(canvasId);
     if (!container) return;
     if (rows.length < 2) {
@@ -2425,21 +2559,24 @@
     }
     const values = rows.flatMap(row => seriesDefs.map(def => Number(def.value(row))).filter(Number.isFinite));
     const max = Math.max(...values, 1);
-    const w = 1000, h = 170, pad = 22;
+    const w = 1000, h = 170, pad = 22, rightPad = 82;
     const grid = [0, 1, 2, 3].map(i => {
       const y = pad + ((h - pad * 2) / 3) * i;
-      return `<line x1="${pad}" y1="${y}" x2="${w - pad}" y2="${y}" stroke="rgba(107,114,128,.25)" stroke-width="1"/>`;
+      const value = max - (max / 3) * i;
+      const axis = (options.axisFormat || seriesDefs[0]?.axis || seriesDefs[0]?.format || (v => v.toFixed(0)))(value);
+      return `<line x1="${pad}" y1="${y}" x2="${w - rightPad}" y2="${y}" stroke="rgba(107,114,128,.25)" stroke-width="1"/><text class="beta-chart-axis-label" x="${w - 8}" y="${y + 3}">${escapeHtml(axis)}</text>`;
     }).join('');
     const paths = seriesDefs.map(def => {
       const points = rows.map((row, idx) => {
-        const x = pad + ((w - pad * 2) * idx / (rows.length - 1));
+        const x = pad + ((w - pad - rightPad) * idx / (rows.length - 1));
         const raw = Number(def.value(row));
         const y = h - pad - ((Number.isFinite(raw) ? raw : 0) / max) * (h - pad * 2);
         return [x, y];
       });
       const d = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
       const last = points[points.length - 1];
-      return `<path d="${d}" fill="none" stroke="${def.color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><circle cx="${last[0]}" cy="${last[1]}" r="4" fill="${def.color}"/>`;
+      const fill = def.area ? `<path d="${d} L${last[0].toFixed(1)},${h - pad} L${points[0][0].toFixed(1)},${h - pad} Z" fill="${def.color}" opacity=".12"/>` : '';
+      return `${fill}<path d="${d}" fill="none" stroke="${def.color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><circle cx="${last[0]}" cy="${last[1]}" r="4" fill="${def.color}"/>`;
     }).join('');
     const legend = seriesDefs.map(def => `<span><i style="background:${def.color}"></i>${escapeHtml(def.label)}</span>`).join('');
     const latest = rows[rows.length - 1];
@@ -2459,27 +2596,87 @@
 
   function drawBetaGlobalChart() {
     const period = document.getElementById('beta-global-period')?.value || 'day';
-    const rows = latestSnapshotsByTrackerAndPeriod(period);
+    const mode = document.getElementById('beta-global-mode')?.value || 'delta';
+    const rows = latestSnapshotsByTrackerAndPeriod(period, mode);
     drawSeriesChart('beta-global-chart', rows, [
-      { label: 'UP total', color: '#22c55e', value: row => row.uploadedBytes, format: value => bytesText(value).replace(/<[^>]+>/g, '') },
-      { label: 'DL total', color: '#3b82f6', value: row => row.downloadedBytes, format: value => bytesText(value).replace(/<[^>]+>/g, '') },
-      { label: 'Seedtime', color: '#eab308', value: row => row.seedTimeDays, format: value => `${value.toFixed(1)} j` },
-    ], 'Global: UP / DL / seedtime');
+      { ...betaMetricDefs.uploadedBytes, label: mode === 'delta' ? 'UP période' : 'UP total', value: row => row.uploadedBytes, area: true },
+      { ...betaMetricDefs.downloadedBytes, label: mode === 'delta' ? 'DL période' : 'DL total', value: row => row.downloadedBytes, area: true },
+      { ...betaMetricDefs.seedTimeDays, value: row => row.seedTimeDays },
+    ], mode === 'delta' ? 'Global: activité par période' : 'Global: cumuls', { axisFormat: betaMetricDefs.uploadedBytes.axis });
   }
 
   function drawBetaHistoryChart() {
-    const rows = historyForSelectedTracker().slice(-80);
     const selected = selectedBetaTracker();
-    drawSeriesChart('beta-history-chart', rows.map(row => ({
-      label: String(row.capturedAt || '').slice(0, 10),
-      uploadedBytes: Number(row.fields?.uploadedBytes || 0),
-      downloadedBytes: Number(row.fields?.downloadedBytes || 0),
-      ratio: Number(row.fields?.ratio || computedRatio(row.fields || {}) || 0),
-    })), [
-      { label: 'UP', color: '#22c55e', value: row => row.uploadedBytes, format: value => bytesText(value).replace(/<[^>]+>/g, '') },
-      { label: 'DL', color: '#3b82f6', value: row => row.downloadedBytes, format: value => bytesText(value).replace(/<[^>]+>/g, '') },
-      { label: 'Ratio', color: '#eab308', value: row => row.ratio, format: value => value.toFixed(2) },
-    ], `${selected?.name || 'Tracker'}: UP / DL / ratio`);
+    const metric = document.getElementById('beta-history-metric')?.value || 'all';
+    const mode = document.getElementById('beta-history-mode')?.value || 'delta';
+    const rows = chartRowsForTracker(selected?.id, 'day', mode);
+    const defs = [
+      { ...betaMetricDefs.uploadedBytes, value: row => row.uploadedBytes, area: true },
+      { ...betaMetricDefs.downloadedBytes, value: row => row.downloadedBytes, area: true },
+      { ...betaMetricDefs.ratio, value: row => row.ratio },
+    ].filter(def => metric === 'all' || def.label === betaMetricDefs[metric]?.label);
+    const axisDef = metric === 'ratio' ? betaMetricDefs.ratio : betaMetricDefs.uploadedBytes;
+    drawSeriesChart('beta-history-chart', rows, defs, `${selected?.name || 'Tracker'}: ${metric === 'all' ? 'UP / DL / ratio' : betaMetricDefs[metric].label}`, { axisFormat: axisDef.axis });
+  }
+
+  function drawBetaMultiTrackerChart() {
+    const metric = document.getElementById('beta-multi-metric')?.value || 'downloadedBytes';
+    const rowsByTracker = latestSortedStats.map((stat, idx) => {
+      const rows = chartRowsForTracker(stat.id, 'day', metric === 'ratio' ? 'total' : 'delta');
+      return { stat, idx, rows };
+    }).filter(item => item.rows.length >= 2);
+    const labels = [...new Set(rowsByTracker.flatMap(item => item.rows.map(row => row.label)))].sort().slice(-36);
+    const rows = labels.map(label => {
+      const out = { label };
+      rowsByTracker.forEach(item => {
+        out[item.stat.id] = item.rows.find(row => row.label === label)?.[metric] || 0;
+      });
+      return out;
+    });
+    const metricDef = betaMetricDefs[metric];
+    const defs = rowsByTracker.map(item => ({
+      label: trackerDisplayName(item.stat.id),
+      color: trackerColor(item.stat.id, item.idx),
+      value: row => row[item.stat.id],
+      format: metricDef.format,
+      axis: metricDef.axis,
+    }));
+    drawSeriesChart('beta-multi-chart', rows, defs, metric === 'ratio' ? 'Ratio par tracker' : `${metricDef.label} quotidien par tracker`, { axisFormat: metricDef.axis });
+  }
+
+  function renderBetaBarList(title, rows, color) {
+    const max = Math.max(...rows.map(row => row.value), 1);
+    return `
+      <div class="beta-bar-list">
+        <h4>${escapeHtml(title)}</h4>
+        ${rows.map(row => `
+          <div class="beta-bar-row" title="${escapeHtml(row.name)}">
+            <span class="beta-bar-name">${escapeHtml(row.name)}</span>
+            <span class="beta-bar-track"><span class="beta-bar-fill" style="width:${Math.max(1, row.value / max * 100).toFixed(1)}%; background:${color}"></span></span>
+            <span class="beta-bar-value">${escapeHtml(bytesText(row.value).replace(/<[^>]+>/g, ''))}</span>
+          </div>
+        `).join('') || '<p class="beta-note">Aucune donnée.</p>'}
+      </div>`;
+  }
+
+  function drawBetaTotalBars() {
+    const container = document.getElementById('beta-total-bars');
+    if (!container) return;
+    const rows = latestSortedStats.map(stat => ({
+      name: stat.name || stat.id,
+      uploadedBytes: Number(stat.fields?.uploadedBytes || 0),
+      downloadedBytes: Number(stat.fields?.downloadedBytes || 0),
+    }));
+    const dlRows = rows.map(row => ({ name: row.name, value: row.downloadedBytes })).sort((a, b) => b.value - a.value);
+    const upRows = rows.map(row => ({ name: row.name, value: row.uploadedBytes })).sort((a, b) => b.value - a.value);
+    container.innerHTML = renderBetaBarList('DL total', dlRows, '#3b82f6') + renderBetaBarList('UP total', upRows, '#22c55e');
+  }
+
+  function drawBetaCharts() {
+    drawBetaGlobalChart();
+    drawBetaHistoryChart();
+    drawBetaMultiTrackerChart();
+    drawBetaTotalBars();
   }
 
   function renderBetaCalendar() {
@@ -2659,15 +2856,15 @@
     }).join('');
     const editRows = mappings.map((mapping, idx) => `
       <div class="beta-form-row" data-beta-mapping="${idx}" style="grid-template-columns:2fr 2fr auto">
-        <div class="beta-field"><label>Hôte d'annonce</label><input data-field="announceHost" value="${escapeHtml(mapping.announceHost || '')}" placeholder="tracker.example.org"></div>
+        <div class="beta-field"><label>Source BitTorrent</label><input data-field="announceHost" value="${escapeHtml(mapping.announceHost || '')}" placeholder="tracker.example.org"></div>
         <div class="beta-field"><label>Tracker actif</label><select data-field="trackerId">${trackerOptions}</select></div>
         <button class="beta-icon-btn" onclick="removeBetaAnnounceMapping(${idx})" type="button">X</button>
       </div>
     `).join('');
     container.innerHTML = `
       <table class="beta-mini-table" style="margin-bottom:10px">
-        <thead><tr><th>Hôte détecté</th><th>Torrents</th><th>Suggestion / lien</th><th></th></tr></thead>
-        <tbody>${detectedRows || '<tr><td colspan="3" class="cell-muted">Aucun hôte détecté. Lancer la synchronisation des clients BitTorrent après avoir configuré un client.</td></tr>'}</tbody>
+        <thead><tr><th>Source détectée</th><th>Torrents</th><th>Suggestion / lien</th><th></th></tr></thead>
+        <tbody>${detectedRows || '<tr><td colspan="4" class="cell-muted">Aucune source détectée. Lancer la synchronisation des clients BitTorrent après avoir configuré un client.</td></tr>'}</tbody>
       </table>
       ${editRows || '<p class="beta-note">Aucune liaison manuelle pour le moment.</p>'}
     `;
@@ -2910,7 +3107,7 @@
       const data = await r.json();
       if (!data.ok) throw new Error(data.error || 'Échec de synchronisation des clients BitTorrent');
       await loadBetaData();
-      alert(`Clients BitTorrent synchronisés : ${data.stats.reduce((sum, item) => sum + item.torrentCount, 0)} torrent(s), ${data.stats.length} hôte(s) d'annonce.`);
+      alert(`Clients BitTorrent synchronisés : ${data.stats.reduce((sum, item) => sum + item.torrentCount, 0)} torrent(s), ${data.stats.length} source(s) détectée(s).`);
     } catch (err) {
       alert(err?.message || 'Échec de synchronisation des clients BitTorrent');
     } finally {
